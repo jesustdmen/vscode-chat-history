@@ -23,7 +23,7 @@ from urllib.parse import unquote
 
 import markdown as _markdown
 import streamlit as st
-from pipeline.viewer.i18n import get_translation, LANGUAGE_OPTIONS, TRANSLATIONS
+from i18n import get_translation, LANGUAGE_OPTIONS, TRANSLATIONS
 
 # ---------------------------------------------------------------------------
 # i18n helper — lê o idioma do session_state a cada chamada
