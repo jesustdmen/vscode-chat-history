@@ -1,0 +1,13 @@
+[browser]
+# Desativa envio de telemetria de uso para servidores externos (Snowflake/Segment)
+# IMPORTANTE: manter sempre como false — esta ferramenta lida com dados pessoais locais
+gatherUsageStats = false
+
+[server]
+# Restringe o viewer à máquina local — não expõe na rede
+address = "localhost"
+port = 8502
+
+[theme]
+# Tema inicial — o usuário pode alternar via toggle no viewer
+base = "dark"

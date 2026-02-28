@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatsvs-pipeline"
+version = "0.1.0"
+description = "VS Code Chat History Pipeline — extração, normalização e visualização do histórico do Copilot Chat"
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit>=1.32.0",
+    "markdown>=3.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pipeline*"]
+
+[tool.setuptools.package-dir]
+"" = "."

@@ -1,0 +1,49 @@
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Dados gerados pelo pipeline — NUNCA versionar (contêm histórico pessoal de chat)
+pipeline/output/
+
+# Dados exportados pelo viewer — histórico pessoal de chat
+_chatsession/
+
+# Secrets do Streamlit (se criados futuramente)
+.streamlit/secrets.toml
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Distribuição / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDEs
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+normalize_log.txt
+
+# Arquivos temporários
+*.tmp
+*.bak
+
+# Pasta de trabalho local — contexto, rascunhos, notas, arquivos de IA
+# Não vai ao repositório público. Use esta pasta para qualquer arquivo pessoal.
+_dev/
