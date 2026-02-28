@@ -54,6 +54,7 @@ VS Code AppData
 - ✅ Reconstructs active sessions (open workspaces) from incremental JSONL patches
 - ✅ Streamlit viewer with 3 tabs: **Conversation**, **Activity Log**, **Workspaces**
 - ✅ Light/dark theme toggle
+- ✅ UI in 3 languages: 🇧🇷 Português, 🇺🇸 English, 🇪🇸 Español — language selector in sidebar
 - ✅ Color-coded source badges · stat bar · pre-computed search index
 - ✅ Structured JSON export (schema v1.0) per session
 - ✅ "📋 Copy text" button and expandable tool calls per message

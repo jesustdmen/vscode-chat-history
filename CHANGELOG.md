@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.1.1] — 2026-02-28
+
+### Adicionado
+- Viewer: suporte a 3 idiomas (🇧🇷 PT-BR / 🇺🇸 EN-US / 🇪🇸 ES-ES) com seletor na sidebar
+- `pipeline/viewer/i18n.py`: dicionário central de traduções com ~40 chaves por idioma
+- Helper `_t(key)` que lê `st.session_state["lang"]` dinamicamente
+- Helper `_display_title()` para traduzir sentinel `__NO_TITLE__` fora do cache
+- Dias da semana no Diário de Atividades traduzidos dinamicamente
+
+### Corrigido
+- Import de `i18n.py` corrigido para path relativo (`from i18n import ...`) compatível com `streamlit run`
+- Adicionados `pipeline/__init__.py` e `pipeline/viewer/__init__.py` ausentes
+
+---
+
 ## [0.1.0] — 2026-02-28
 
 ### Adicionado
