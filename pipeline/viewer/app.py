@@ -23,6 +23,20 @@ from urllib.parse import unquote
 
 import markdown as _markdown
 import streamlit as st
+from pipeline.viewer.i18n import get_translation, LANGUAGE_OPTIONS, TRANSLATIONS
+
+# ---------------------------------------------------------------------------
+# i18n helper — lê o idioma do session_state a cada chamada
+# ---------------------------------------------------------------------------
+def _t(key: str, **kwargs) -> str:
+    lang = st.session_state.get("lang", "pt-BR")
+    return get_translation(lang, key, **kwargs)
+
+
+def _display_title(title: str) -> str:
+    """Converte o sentinel __NO_TITLE__ para a string traduzida."""
+    return _t("no_title") if title == "__NO_TITLE__" else title
+
 
 # ---------------------------------------------------------------------------
 # Markdown helper
@@ -158,7 +172,7 @@ def _to_brt(ts_iso: str | None) -> str | None:
 # ---------------------------------------------------------------------------
 # Carregamento de dados (cache)
 # ---------------------------------------------------------------------------
-@st.cache_data(show_spinner="Carregando dados...")
+@st.cache_data(show_spinner=True)
 def load_data() -> tuple[list[dict], list[dict]]:
     def read_jsonl(path: Path) -> list[dict]:
         out = []
@@ -219,7 +233,7 @@ def build_workspace_index(summaries: list[dict], ws_paths: dict[str, str]) -> li
         entry["total_user"]      += s.get("user_turns", 0)
         entry["total_assistant"] += s.get("assistant_turns", 0)
         entry["sessions"].append({
-            "thread_id": s.get("thread_id") or "", "title": (s.get("title") or "").strip() or "Sem título",
+            "thread_id": s.get("thread_id") or "", "title": (s.get("title") or "").strip() or "__NO_TITLE__",
             "last_ts": lt, "user_turns": s.get("user_turns", 0),
             "assistant_turns": s.get("assistant_turns", 0), "source": src,
         })
@@ -243,7 +257,7 @@ def build_session_index(messages: list[dict], summaries: list[dict]) -> dict[str
 
     def _make(s: dict, src: str) -> dict:
         tid        = s.get("thread_id") or s.get("session_id") or ""
-        title      = (s.get("title") or "").strip() or "Sem título"
+        title      = (s.get("title") or "").strip() or "__NO_TITLE__"
         last_ts    = s.get("last_ts") or ""
         date_label = ts_to_date_brt(last_ts) if last_ts else "—"
         msgs = sorted(
@@ -611,28 +625,28 @@ def render_message(m: dict) -> None:
     if role == "user":
         html_content = _md_to_html(text, nl2br=True)
         st.markdown(
-            f'<div class="msg-role msg-role-right">Você · {_html.escape(ts)}</div>',
+            f'<div class="msg-role msg-role-right">{_t("role_user")} · {_html.escape(ts)}</div>',
             unsafe_allow_html=True,
         )
         st.markdown(f'<div class="msg-user">{html_content}</div>', unsafe_allow_html=True)
-        with st.expander("📋 Copiar texto", expanded=False):
+        with st.expander(_t("copy_text"), expanded=False):
             st.code(text, language=None)
 
     elif role == "assistant":
         html_content = _md_to_html(text, nl2br=False)
         st.markdown(
-            f'<div class="msg-role">Assistente · {_html.escape(ts)}</div>',
+            f'<div class="msg-role">{_t("role_assistant")} · {_html.escape(ts)}</div>',
             unsafe_allow_html=True,
         )
         st.markdown(f'<div class="msg-assistant">{html_content}</div>', unsafe_allow_html=True)
-        with st.expander("📋 Copiar texto", expanded=False):
+        with st.expander(_t("copy_text"), expanded=False):
             st.code(text, language=None)
 
     elif role == "tool":
         with st.expander(f"🔧 {tool or 'tool'} · {_html.escape(ts)}", expanded=False):
             st.code(text, language=None)
             if m.get("tool_input"):
-                st.caption("Argumentos:")
+                st.caption(_t("tool_args"))
                 try:
                     st.json(json.loads(m["tool_input"]))
                 except Exception:
@@ -652,7 +666,7 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
 
     st.markdown(
         f'<div class="sess-header">'
-        f'<div class="sess-header-title">{_html.escape(session["title"])}</div>'
+        f'<div class="sess-header-title">{_html.escape(_display_title(session["title"]))}</div>'
         f'<div class="sess-header-meta">'
         f'{src_badge}{ws_info} · '
         f'<span style="font-family:monospace;font-size:.72rem;color:#666">{tid_short}…</span>'
@@ -664,13 +678,13 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
     st.markdown(
         f'<div class="stat-bar">'
         f'<div class="stat-item"><span class="stat-value stat-blue">{session["user_turns"]}</span>'
-        f'<span class="stat-label">Perguntas</span></div>'
+        f'<span class="stat-label">{_t("stat_questions")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-green">{session["assistant_turns"]}</span>'
-        f'<span class="stat-label">Respostas</span></div>'
+        f'<span class="stat-label">{_t("stat_answers")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-yellow">{session["tool_calls"]}</span>'
-        f'<span class="stat-label">Tool calls</span></div>'
+        f'<span class="stat-label">{_t("stat_toolcalls")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(session["date_label"])}</span>'
-        f'<span class="stat-label">Data</span></div>'
+        f'<span class="stat-label">{_t("stat_date")}</span></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -685,25 +699,25 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
 
     bcol, ccol = st.columns([1, 5])
     save_local = bcol.checkbox(
-        "📂 Salvar no workspace",
+        _t("save_to_workspace"),
         value=False,
         disabled=ws_chat_dir is None,
-        help=str(ws_chat_dir) if ws_chat_dir else "Workspace não identificado para esta sessão.",
+        help=str(ws_chat_dir) if ws_chat_dir else _t("workspace_not_id"),
     )
 
     if save_local and ws_chat_dir is not None:
-        if bcol.button("⬇️ Salvar arquivo", use_container_width=True):
+        if bcol.button(_t("save_file_btn"), use_container_width=True):
             try:
                 ws_chat_dir.mkdir(parents=True, exist_ok=True)
                 dest = ws_chat_dir / fname
                 dest.write_bytes(json_bytes)
-                st.success(f"✅ Salvo em: `{dest}`")
+                st.success(_t("saved_success", dest=dest))
             except Exception as exc:
-                st.error(f"Erro ao salvar: {exc}")
+                st.error(_t("save_error", exc=exc))
         ccol.caption(f"`{fname}` · {n_exchanges} exchange(s) · schema v1.0\n\n📁 `{ws_chat_dir}`")
     else:
         bcol.download_button(
-            label="⬇️ Exportar JSON",
+            label=_t("export_json_btn"),
             data=json_bytes,
             file_name=fname,
             mime="application/json",
@@ -721,13 +735,13 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         st.markdown(
             '<div class="empty-state">'
             '<div class="empty-state-icon">💬</div>'
-            '<div class="empty-state-text">Nenhuma mensagem encontrada para esta sessão.</div>'
+            f'<div class="empty-state-text">{_t("no_messages")}</div>'
             '</div>',
             unsafe_allow_html=True,
         )
         return
 
-    show_tools = st.checkbox("Mostrar tool calls", value=False)
+    show_tools = st.checkbox(_t("show_tool_calls"), value=False)
     for m in msgs:
         if m.get("role") == "tool" and not show_tools:
             continue
@@ -738,13 +752,13 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
 # Tab 2: Diário de Atividades
 # ---------------------------------------------------------------------------
 def tab_diario(sessions: dict[str, dict]) -> None:
-    st.subheader("Diário de Atividades")
-    st.caption("Sessões agrupadas por dia — ideal para documentar o que foi feito.")
+    st.subheader(_t("diary_title"))
+    st.caption(_t("diary_caption"))
 
     search_col, from_col, to_col = st.columns([2, 1, 1])
-    text_filter = search_col.text_input("🔍 Buscar por título ou thread ID", "", key="diario_search")
-    date_from_val = from_col.date_input("De:", value=None, key="diario_from", format=_DATE_FMT)
-    date_to_val   = to_col.date_input("Até:", value=None, key="diario_to", format=_DATE_FMT)
+    text_filter = search_col.text_input(_t("diary_search"), "", key="diario_search")
+    date_from_val = from_col.date_input(_t("date_from"), value=None, key="diario_from", format=_DATE_FMT)
+    date_to_val   = to_col.date_input(_t("date_to"), value=None, key="diario_to", format=_DATE_FMT)
 
     date_from = date_from_val.isoformat() if date_from_val else None
     date_to   = date_to_val.isoformat() if date_to_val else None
@@ -774,15 +788,14 @@ def tab_diario(sessions: dict[str, dict]) -> None:
         st.markdown(
             '<div class="empty-state">'
             '<div class="empty-state-icon">🔍</div>'
-            '<div class="empty-state-text">Nenhuma sessão encontrada para os filtros aplicados.<br>'
-            'Tente ampliar o intervalo de datas ou limpar a busca.</div>'
+            f'<div class="empty-state-text">{_t("no_diary_sessions")}</div>'
             '</div>',
             unsafe_allow_html=True,
         )
         return
 
     total_found = sum(len(v) for v in by_date.values())
-    st.caption(f"{total_found} sessão(ões) em {len(ordered_dates)} dia(s)")
+    st.caption(_t("diary_count", total=total_found, days=len(ordered_dates)))
 
     for day in ordered_dates:
         day_sessions = sorted(by_date[day], key=lambda s: s["last_ts"], reverse=True)
@@ -790,11 +803,8 @@ def tab_diario(sessions: dict[str, dict]) -> None:
         day_asst  = sum(s["assistant_turns"] for s in day_sessions)
         try:
             day_dt = datetime.fromisoformat(day)
-            wk_map = {
-                "Monday": "Segunda-feira", "Tuesday": "Terça-feira",
-                "Wednesday": "Quarta-feira", "Thursday": "Quinta-feira",
-                "Friday": "Sexta-feira", "Saturday": "Sábado", "Sunday": "Domingo",
-            }
+            lang = st.session_state.get("lang", "pt-BR")
+            wk_map = TRANSLATIONS[lang]["weekdays"]
             day_label = f"{wk_map.get(day_dt.strftime('%A'), day_dt.strftime('%A'))}, {day_dt.strftime('%d/%m/%Y')}"
         except Exception:
             day_label = day
@@ -802,7 +812,7 @@ def tab_diario(sessions: dict[str, dict]) -> None:
         st.markdown(
             f'<div class="day-header">📅 {day_label} &nbsp;'
             f'<span style="font-weight:400;color:#aaa;font-size:.82rem;">'
-            f'({len(day_sessions)} sessão/sessões · {day_user}U {day_asst}A)</span></div>',
+            f'({_t("day_header_meta", n=len(day_sessions), u=day_user, a=day_asst)})</span></div>',
             unsafe_allow_html=True,
         )
 
@@ -812,12 +822,13 @@ def tab_diario(sessions: dict[str, dict]) -> None:
             src   = s["source"]
             ts    = ts_to_label(s["last_ts"])
             tid   = s["thread_id"]
+            display_title = _display_title(title)
 
             # Destaca o termo buscado no título (com escape XSS)
-            safe_title = _html.escape(title)
-            if text_filter and text_filter.lower() in title.lower():
-                idx = title.lower().find(text_filter.lower())
-                hl  = _html.escape(title[idx:idx + len(text_filter)])
+            safe_title = _html.escape(display_title)
+            if text_filter and text_filter.lower() in display_title.lower():
+                idx = display_title.lower().find(text_filter.lower())
+                hl  = _html.escape(display_title[idx:idx + len(text_filter)])
                 safe_title = safe_title.replace(
                     hl,
                     f'<mark style="background:#5a4a00;color:#ffd">{hl}</mark>',
@@ -830,12 +841,12 @@ def tab_diario(sessions: dict[str, dict]) -> None:
                 f'<span class="diary-session-title">• {safe_title}</span>'
                 f' {_source_badge(src)}'
                 f'<br><span class="diary-meta">'
-                f'{_html.escape(ts)} · {u} perguntas · {a} respostas'
+                f'{_html.escape(ts)} · {_t("diary_meta", u=u, a=a)}'
                 f' · <span style="font-family:monospace;font-size:.72rem;color:#666">{_html.escape(tid[:16])}…</span>'
                 f'</span></div>',
                 unsafe_allow_html=True,
             )
-            if btn_col.button("↗", key=f"goto_{tid}", help="Abrir no Conversa"):
+            if btn_col.button("↗", key=f"goto_{tid}", help=_t("goto_conversation")):
                 st.session_state["_pending_tid"]   = tid
                 st.session_state["_goto_conversa"] = True
                 st.rerun()
@@ -845,27 +856,26 @@ def tab_diario(sessions: dict[str, dict]) -> None:
 # Tab 3: Workspaces
 # ---------------------------------------------------------------------------
 def tab_workspaces(workspaces: list[dict]) -> None:
-    st.subheader("Workspaces")
+    st.subheader(_t("workspaces_title"))
     if not workspaces:
         st.markdown(
             '<div class="empty-state">'
             '<div class="empty-state-icon">🗂️</div>'
-            '<div class="empty-state-text">Nenhum workspace encontrado.<br>'
-            'Execute o pipeline para atualizar os dados.</div>'
+            f'<div class="empty-state-text">{_t("no_workspaces")}</div>'
             '</div>',
             unsafe_allow_html=True,
         )
         return
 
-    st.caption(f"{len(workspaces)} workspace(s) com sessões de chat registradas.")
-    search = st.text_input("🔍 Filtrar por pasta", "", key="ws_search")
+    st.caption(_t("workspaces_count", n=len(workspaces)))
+    search = st.text_input(_t("filter_by_folder"), "", key="ws_search")
     filtered = [
         w for w in workspaces
         if not search or search.lower() in w["folder"].lower() or search.lower() in w["hash"].lower()
     ]
 
     if not filtered:
-        st.warning("Nenhum workspace encontrado para o filtro aplicado.")
+        st.warning(_t("no_ws_filter"))
         return
 
     for w in filtered:
@@ -881,12 +891,12 @@ def tab_workspaces(workspaces: list[dict]) -> None:
             f'<div class="ws-folder">📁 {_html.escape(folder)}</div>'
             f'<div class="ws-hash">{_html.escape(h)}</div>'
             f'<div class="ws-meta">'
-            f'Primeira sessão: {first_dt} &nbsp;·&nbsp; Última: {last_dt} &nbsp;·&nbsp; '
-            f'{n_sess} sessão(ões) &nbsp;·&nbsp; {u} perguntas &nbsp;·&nbsp; {a} respostas'
+            f'{_t("ws_first")}: {first_dt} &nbsp;·&nbsp; {_t("ws_last")}: {last_dt} &nbsp;·&nbsp; '
+            f'{_t("ws_sessions", n=n_sess)} &nbsp;·&nbsp; {_t("ws_questions", u=u)} &nbsp;·&nbsp; {_t("ws_answers", a=a)}'
             f'</div></div>',
             unsafe_allow_html=True,
         )
-        with st.expander(f"Ver {n_sess} sessão(ões) de '{folder.split(chr(92))[-1] or folder}'", expanded=False):
+        with st.expander(_t("expand_sessions", n=n_sess, folder=folder.split(chr(92))[-1] or folder), expanded=False):
             for sess in w["sessions"]:
                 dt  = sess["last_ts"][:10] if sess["last_ts"] else "—"
                 u_s = sess["user_turns"]
@@ -929,10 +939,7 @@ def main() -> None:
         )
 
     if not _SESSIONS_FILE.exists():
-        st.error(
-            f"Arquivo `sessions.jsonl` não encontrado em:\n`{_SESSIONS_FILE}`\n\n"
-            "Execute o pipeline primeiro:\n```\npython pipeline/02_normalize/normalize.py\n```"
-        )
+        st.error(_t("no_data_error", path=_SESSIONS_FILE))
         st.stop()
 
     messages, summaries = load_data()
@@ -944,21 +951,37 @@ def main() -> None:
     # Sidebar
     # ------------------------------------------------------------------
     with st.sidebar:
-        st.title("💬 Chat Viewer")
-        st.caption(f"**{len(sessions)}** sessões carregadas")
+        st.title(_t("app_title"))
+        st.caption(_t("sessions_loaded", n=len(sessions)))
+
+        # Seletor de idioma
+        lang_options = list(LANGUAGE_OPTIONS.keys())
+        lang_labels  = list(LANGUAGE_OPTIONS.values())
+        current_lang = st.session_state.get("lang", "pt-BR")
+        lang_idx = lang_options.index(current_lang) if current_lang in lang_options else 0
+        selected_lang = st.selectbox(
+            _t("language_label"),
+            lang_options,
+            index=lang_idx,
+            format_func=lambda k: LANGUAGE_OPTIONS[k],
+            key="_lang_select",
+        )
+        if selected_lang != current_lang:
+            st.session_state["lang"] = selected_lang
+            st.rerun()
 
         # Toggle de tema
-        theme_label = "☀️ Tema claro" if theme == "dark" else "🌙 Tema escuro"
+        theme_label = _t("theme_to_light") if theme == "dark" else _t("theme_to_dark")
         if st.button(theme_label, use_container_width=True):
             st.session_state["theme"] = "light" if theme == "dark" else "dark"
             st.rerun()
 
         st.divider()
 
-        search     = st.text_input("🔍 Buscar por título ou palavra-chave", "")
+        search     = st.text_input(_t("search_placeholder"), "")
         sources    = sorted({s["source"] for s in sessions.values()})
-        source_sel = st.multiselect("Fonte", sources, default=sources)
-        hide_empty = st.checkbox("Ocultar sessões vazias", value=True)
+        source_sel = st.multiselect(_t("source_filter_label"), sources, default=sources)
+        hide_empty = st.checkbox(_t("hide_empty"), value=True)
 
         st.divider()
 
@@ -970,19 +993,19 @@ def main() -> None:
             and (not search or search.lower() in s["_search_text"])
         ]
 
-        st.caption(f"{len(filtered)} sessão(ões) encontrada(s)")
+        st.caption(_t("sessions_found", n=len(filtered)))
 
         if not filtered:
             st.markdown(
-                '<div style="text-align:center;padding:20px;color:#666;font-size:.85rem;">'
-                '🔍 Nenhuma sessão encontrada.<br>Tente outros termos de busca.</div>',
+                f'<div style="text-align:center;padding:20px;color:#666;font-size:.85rem;">'
+                f'{_t("no_sessions_found")}</div>',
                 unsafe_allow_html=True,
             )
             selected_tid = None
         else:
             options = [s["thread_id"] for s in filtered]
             labels  = {
-                s["thread_id"]: f"{s['date_label']} — {s['title'][:38]}"
+                s["thread_id"]: f"{s['date_label']} — {_display_title(s['title'])[:38]}"
                 for s in filtered
             }
 
@@ -997,7 +1020,7 @@ def main() -> None:
                 st.session_state.selected_tid = first_with_content
 
             selected_tid = st.selectbox(
-                "Sessão:",
+                _t("session_select_label"),
                 options,
                 format_func=lambda t: labels.get(t) or str(t),
                 key="selected_tid",
@@ -1006,7 +1029,7 @@ def main() -> None:
         st.divider()
 
         # Botão de pipeline
-        run_pipeline = st.button("🔄 Executar pipeline", use_container_width=True)
+        run_pipeline = st.button(_t("run_pipeline_btn"), use_container_width=True)
         pipeline_log = st.empty()
 
         if run_pipeline:
@@ -1015,7 +1038,7 @@ def main() -> None:
             env     = os.environ.copy()
             env["PYTHONUTF8"] = "1"
             lines: list[str] = []
-            pipeline_log.info("Iniciando pipeline...")
+            pipeline_log.info(_t("pipeline_starting"))
             success = False
             try:
                 with subprocess.Popen(
@@ -1030,14 +1053,14 @@ def main() -> None:
                     proc.wait()
                     success = proc.returncode == 0
             except Exception as exc:
-                pipeline_log.error(f"Erro ao iniciar pipeline: {exc}")
+                pipeline_log.error(_t("pipeline_launch_error", exc=exc))
 
             if success:
-                pipeline_log.success("Pipeline concluído! Recarregando dados...")
+                pipeline_log.success(_t("pipeline_success"))
                 st.cache_data.clear()
                 st.rerun()
             else:
-                pipeline_log.error("Pipeline encerrou com erro. Veja o log acima.")
+                pipeline_log.error(_t("pipeline_error"))
 
     # ------------------------------------------------------------------
     # Área principal — abas
@@ -1046,14 +1069,13 @@ def main() -> None:
         st.markdown(
             '<div class="empty-state">'
             '<div class="empty-state-icon">📭</div>'
-            '<div class="empty-state-text">Nenhuma sessão disponível.<br>'
-            'Execute o pipeline para carregar os dados.</div>'
+            f'<div class="empty-state-text">{_t("no_sessions_main")}</div>'
             '</div>',
             unsafe_allow_html=True,
         )
         return
 
-    tab1, tab2, tab3 = st.tabs(["💬 Conversa", "📅 Diário de Atividades", "🗂️ Workspaces"])
+    tab1, tab2, tab3 = st.tabs([_t("tab_conversation"), _t("tab_diary"), _t("tab_workspaces")])
 
     with tab2:
         tab_diario(sessions)
@@ -1067,7 +1089,7 @@ def main() -> None:
             tab_conversa(session, ws_paths)
     else:
         with tab1:
-            st.info("Selecione uma sessão na barra lateral.")
+            st.info(_t("select_session"))
 
 
 if __name__ == "__main__":
