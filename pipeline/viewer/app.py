@@ -38,6 +38,12 @@ def _display_title(title: str) -> str:
     return _t("no_title") if title == "__NO_TITLE__" else title
 
 
+def _fmt_date_display(date_label: str) -> str:
+    """Converte YYYY-MM-DD para DD/MM/YYYY na exibição."""
+    parts = date_label.split("-")
+    return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else date_label
+
+
 # ---------------------------------------------------------------------------
 # Markdown helper
 # ---------------------------------------------------------------------------
@@ -683,10 +689,10 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         f'<span class="stat-label">{_t("stat_answers")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-yellow">{session["tool_calls"]}</span>'
         f'<span class="stat-label">{_t("stat_toolcalls")}</span></div>'
-        f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(session["date_label"])}</span>'
+        f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(_fmt_date_display(session["date_label"]))}</span>'
         f'<span class="stat-label">{_t("stat_date")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-purple">'
-        f'{datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m/%Y") if _SESSIONS_FILE.exists() else "—"}'
+        f'{datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m/%Y %H:%M") if _SESSIONS_FILE.exists() else "—"}'
         f'</span><span class="stat-label">{_t("stat_sync")}</span></div>'
         f'</div>',
         unsafe_allow_html=True,
