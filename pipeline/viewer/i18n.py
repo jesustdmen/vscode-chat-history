@@ -46,6 +46,7 @@ TRANSLATIONS: dict[str, dict] = {
         "stat_answers":         "Respostas",
         "stat_toolcalls":       "Tool calls",
         "stat_date":            "Data",
+        "stat_sync":            "Sincronização",
 
         # Tab Conversa — exportação
         "save_to_workspace":    "📂 Salvar no workspace",
@@ -139,6 +140,7 @@ TRANSLATIONS: dict[str, dict] = {
         "stat_answers":         "Answers",
         "stat_toolcalls":       "Tool calls",
         "stat_date":            "Date",
+        "stat_sync":            "Last sync",
 
         # Export
         "save_to_workspace":    "📂 Save to workspace",
@@ -232,6 +234,7 @@ TRANSLATIONS: dict[str, dict] = {
         "stat_answers":         "Respuestas",
         "stat_toolcalls":       "Tool calls",
         "stat_date":            "Fecha",
+        "stat_sync":            "Sincronización",
 
         # Export
         "save_to_workspace":    "📂 Guardar en workspace",

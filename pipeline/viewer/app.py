@@ -336,7 +336,7 @@ _CSS_COMMON = """
 .stat-item{display:flex;flex-direction:column;align-items:center;min-width:70px}
 .stat-value{font-size:1.4rem;font-weight:700;line-height:1.1}
 .stat-label{font-size:.68rem;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
-.stat-blue{color:#3b82f6}.stat-green{color:#10b981}.stat-yellow{color:#f59e0b}.stat-gray{color:#6b7280}
+.stat-blue{color:#3b82f6}.stat-green{color:#10b981}.stat-yellow{color:#f59e0b}.stat-gray{color:#6b7280}.stat-purple{color:#8b5cf6}
 
 .sess-header{border-radius:8px;padding:10px 14px;margin-bottom:10px}
 .sess-header-title{font-size:1.05rem;font-weight:600;margin-bottom:4px}
@@ -685,6 +685,9 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         f'<span class="stat-label">{_t("stat_toolcalls")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(session["date_label"])}</span>'
         f'<span class="stat-label">{_t("stat_date")}</span></div>'
+        f'<div class="stat-item"><span class="stat-value stat-purple" style="font-size:1rem">'
+        f'{datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m %H:%M") if _SESSIONS_FILE.exists() else "—"}'
+        f'</span><span class="stat-label">{_t("stat_sync")}</span></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
