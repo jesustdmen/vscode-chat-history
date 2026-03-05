@@ -685,8 +685,8 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         f'<span class="stat-label">{_t("stat_toolcalls")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(session["date_label"])}</span>'
         f'<span class="stat-label">{_t("stat_date")}</span></div>'
-        f'<div class="stat-item"><span class="stat-value stat-purple" style="font-size:1rem">'
-        f'{datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m %H:%M") if _SESSIONS_FILE.exists() else "—"}'
+        f'<div class="stat-item"><span class="stat-value stat-purple">'
+        f'{datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m/%Y") if _SESSIONS_FILE.exists() else "—"}'
         f'</span><span class="stat-label">{_t("stat_sync")}</span></div>'
         f'</div>',
         unsafe_allow_html=True,
