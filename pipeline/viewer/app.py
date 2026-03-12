@@ -1057,6 +1057,7 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
 def tab_tags(tag_store: dict[str, object], workspaces: list[dict]) -> None:
     st.subheader(_t("tags_title"))
     st.caption(_t("tags_caption"))
+    st.markdown(f'**{_t("tags_new_label")}**')
 
     with st.form("tag_create_form", clear_on_submit=True):
         name_col, btn_col = st.columns([5, 1])
@@ -1064,6 +1065,7 @@ def tab_tags(tag_store: dict[str, object], workspaces: list[dict]) -> None:
             _t("tags_new_label"),
             key="new_tag_name",
             placeholder=_t("tags_new_placeholder"),
+            label_visibility="collapsed",
         )
         create_tag = btn_col.form_submit_button(_t("tags_create_btn"), use_container_width=True)
 
