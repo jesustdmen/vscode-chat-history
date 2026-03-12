@@ -44,6 +44,58 @@ def _fmt_date_display(date_label: str) -> str:
     return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else date_label
 
 
+def _normalize_tag_name(tag: str) -> str:
+    """Normaliza nome da tag para persistência e comparação."""
+    return re.sub(r"\s+", " ", (tag or "").strip())[:40]
+
+
+def _sanitize_tag_store(data: dict | None) -> dict[str, object]:
+    data = data if isinstance(data, dict) else {}
+    raw_tags = data.get("tags", []) if isinstance(data.get("tags", []), list) else []
+    tags = sorted(
+        {_normalize_tag_name(tag) for tag in raw_tags if _normalize_tag_name(tag)},
+        key=str.lower,
+    )
+    allowed = set(tags)
+
+    raw_workspace_tags = data.get("workspace_tags", {})
+    workspace_tags: dict[str, list[str]] = {}
+    if isinstance(raw_workspace_tags, dict):
+        for ws_hash, items in raw_workspace_tags.items():
+            if not ws_hash or not isinstance(items, list):
+                continue
+            clean = sorted(
+                {
+                    _normalize_tag_name(tag)
+                    for tag in items
+                    if _normalize_tag_name(tag) in allowed
+                },
+                key=str.lower,
+            )
+            if clean:
+                workspace_tags[str(ws_hash)] = clean
+
+    return {"tags": tags, "workspace_tags": workspace_tags}
+
+
+def _matches_selected_tags(item_tags: list[str], selected_tags: list[str]) -> bool:
+    return not selected_tags or bool(set(item_tags).intersection(selected_tags))
+
+
+def _tag_badges(tags: list[str]) -> str:
+    if not tags:
+        return ""
+    return " ".join(
+        (
+            '<span style="display:inline-block;background:#312e81;color:#e0e7ff;'
+            'padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:600;'
+            'margin:2px 6px 0 0;">'
+            f'🏷️ {_html.escape(tag)}</span>'
+        )
+        for tag in tags
+    )
+
+
 # ---------------------------------------------------------------------------
 # Markdown helper
 # ---------------------------------------------------------------------------
@@ -133,6 +185,7 @@ _DATE_FMT = _get_date_format()
 _ROOT           = Path(__file__).resolve().parents[2]
 _SESSIONS_FILE  = _ROOT / "pipeline" / "output" / "normalized" / "sessions.jsonl"
 _SUMMARIES_FILE = _ROOT / "pipeline" / "output" / "normalized" / "summaries.jsonl"
+_TAGS_FILE      = _ROOT / "pipeline" / "output" / "normalized" / "tags.json"
 _WS_STORAGE     = Path(os.environ.get("APPDATA", "")) / "Code" / "User" / "workspaceStorage"
 
 # ---------------------------------------------------------------------------
@@ -214,6 +267,44 @@ def load_workspace_paths() -> dict[str, str]:
         except Exception:
             pass
     return result
+
+
+def load_tag_store() -> dict[str, object]:
+    if not _TAGS_FILE.exists():
+        return {"tags": [], "workspace_tags": {}}
+    try:
+        data = json.loads(_TAGS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"tags": [], "workspace_tags": {}}
+    return _sanitize_tag_store(data)
+
+
+def save_tag_store(store: dict[str, object]) -> None:
+    clean = _sanitize_tag_store(store)
+    _TAGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _TAGS_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def apply_tags_to_data(
+    sessions: dict[str, dict],
+    workspaces: list[dict],
+    tag_store: dict[str, object],
+) -> None:
+    workspace_tags = tag_store.get("workspace_tags", {})
+    if not isinstance(workspace_tags, dict):
+        workspace_tags = {}
+
+    for session in sessions.values():
+        tags = list(workspace_tags.get(session.get("workspace_hash") or "", []))
+        session["tags"] = tags
+        if tags:
+            session["_search_text"] = f'{session["_search_text"]} ' + " ".join(tag.lower() for tag in tags)
+
+    for workspace in workspaces:
+        tags = list(workspace_tags.get(workspace.get("hash") or "", []))
+        workspace["tags"] = tags
+        for sess in workspace.get("sessions", []):
+            sess["tags"] = list(tags)
 
 
 @st.cache_data(show_spinner=False)
@@ -669,6 +760,7 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
     src_badge = _source_badge(session["source"])
     ws_info   = f" · 📁 <code>{_html.escape(Path(ws_folder).name or ws_folder)}</code>" if ws_folder else ""
     tid_short = session["thread_id"][:16]
+    tag_html  = _tag_badges(session.get("tags", []))
 
     st.markdown(
         f'<div class="sess-header">'
@@ -676,7 +768,9 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         f'<div class="sess-header-meta">'
         f'{src_badge}{ws_info} · '
         f'<span style="font-family:monospace;font-size:.72rem;color:#666">{tid_short}…</span>'
-        f'</div></div>',
+        f'</div>'
+        f'{f"<div style=\"margin-top:6px\">{tag_html}</div>" if tag_html else ""}'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -760,7 +854,7 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
 # ---------------------------------------------------------------------------
 # Tab 2: Diário de Atividades
 # ---------------------------------------------------------------------------
-def tab_diario(sessions: dict[str, dict]) -> None:
+def tab_diario(sessions: dict[str, dict], selected_tags: list[str]) -> None:
     st.subheader(_t("diary_title"))
     st.caption(_t("diary_caption"))
 
@@ -782,6 +876,8 @@ def tab_diario(sessions: dict[str, dict]) -> None:
     for s in sessions.values():
         d = s["date_label"]
         if not d or d == "—":
+            continue
+        if not _matches_selected_tags(s.get("tags", []), selected_tags):
             continue
         if date_from and d < date_from:
             continue
@@ -845,10 +941,12 @@ def tab_diario(sessions: dict[str, dict]) -> None:
                 )
 
             entry_col, btn_col = st.columns([11, 1])
+            tag_html = _tag_badges(s.get("tags", []))
             entry_col.markdown(
                 f'<div class="diary-session">'
                 f'<span class="diary-session-title">• {safe_title}</span>'
                 f' {_source_badge(src)}'
+                f'{f"<br>{tag_html}" if tag_html else ""}'
                 f'<br><span class="diary-meta">'
                 f'{_html.escape(ts)} · {_t("diary_meta", u=u, a=a)}'
                 f' · <span style="font-family:monospace;font-size:.72rem;color:#666">{_html.escape(tid[:16])}…</span>'
@@ -864,7 +962,7 @@ def tab_diario(sessions: dict[str, dict]) -> None:
 # ---------------------------------------------------------------------------
 # Tab 3: Workspaces
 # ---------------------------------------------------------------------------
-def tab_workspaces(workspaces: list[dict]) -> None:
+def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selected_tags: list[str]) -> None:
     st.subheader(_t("workspaces_title"))
     if not workspaces:
         st.markdown(
@@ -878,9 +976,16 @@ def tab_workspaces(workspaces: list[dict]) -> None:
 
     st.caption(_t("workspaces_count", n=len(workspaces)))
     search = st.text_input(_t("filter_by_folder"), "", key="ws_search")
+    all_tags = list(tag_store.get("tags", [])) if isinstance(tag_store.get("tags", []), list) else []
     filtered = [
         w for w in workspaces
-        if not search or search.lower() in w["folder"].lower() or search.lower() in w["hash"].lower()
+        if _matches_selected_tags(w.get("tags", []), selected_tags)
+        and (
+            not search
+            or search.lower() in w["folder"].lower()
+            or search.lower() in w["hash"].lower()
+            or any(search.lower() in tag.lower() for tag in w.get("tags", []))
+        )
     ]
 
     if not filtered:
@@ -894,6 +999,7 @@ def tab_workspaces(workspaces: list[dict]) -> None:
         last_dt  = w["last_ts"][:10] if w["last_ts"] else "—"
         first_dt = w["first_ts"][:10] if w["first_ts"] else "—"
         u, a     = w["total_user"], w["total_assistant"]
+        tag_html = _tag_badges(w.get("tags", []))
 
         st.markdown(
             f'<div class="ws-card">'
@@ -902,24 +1008,116 @@ def tab_workspaces(workspaces: list[dict]) -> None:
             f'<div class="ws-meta">'
             f'{_t("ws_first")}: {first_dt} &nbsp;·&nbsp; {_t("ws_last")}: {last_dt} &nbsp;·&nbsp; '
             f'{_t("ws_sessions", n=n_sess)} &nbsp;·&nbsp; {_t("ws_questions", u=u)} &nbsp;·&nbsp; {_t("ws_answers", a=a)}'
-            f'</div></div>',
+            f'</div>'
+            f'{f"<div style=\"margin-top:8px\">{tag_html}</div>" if tag_html else ""}'
+            f'</div>',
             unsafe_allow_html=True,
         )
+        if all_tags:
+            selected_workspace_tags = st.multiselect(
+                _t("workspace_tags_label"),
+                all_tags,
+                default=w.get("tags", []),
+                key=f'workspace_tags_{h}',
+            )
+            selected_workspace_tags = sorted(set(selected_workspace_tags), key=str.lower)
+            if selected_workspace_tags != w.get("tags", []):
+                updated_store = {
+                    "tags": list(all_tags),
+                    "workspace_tags": dict(tag_store.get("workspace_tags", {})),
+                }
+                if selected_workspace_tags:
+                    updated_store["workspace_tags"][h] = selected_workspace_tags
+                else:
+                    updated_store["workspace_tags"].pop(h, None)
+                save_tag_store(updated_store)
+                st.rerun()
+        else:
+            st.caption(_t("workspace_tags_empty"))
+
         with st.expander(_t("expand_sessions", n=n_sess, folder=folder.split(chr(92))[-1] or folder), expanded=False):
             for sess in w["sessions"]:
                 dt  = sess["last_ts"][:10] if sess["last_ts"] else "—"
                 u_s = sess["user_turns"]
                 a_s = sess["assistant_turns"]
                 tid = sess["thread_id"][:12]
+                session_tag_html = _tag_badges(sess.get("tags", []))
                 st.markdown(
                     f'<div class="ws-sess-item">'
                     f'<b>{_html.escape(sess["title"])}</b>'
                     f' {_source_badge(sess["source"])}'
+                    f'{f"<br>{session_tag_html}" if session_tag_html else ""}'
                     f'<br><span class="ws-sess-meta">'
                     f'{dt} · {u_s}U {a_s}A · {_html.escape(tid)}…'
                     f'</span></div>',
                     unsafe_allow_html=True,
                 )
+
+
+def tab_tags(tag_store: dict[str, object], workspaces: list[dict]) -> None:
+    st.subheader(_t("tags_title"))
+    st.caption(_t("tags_caption"))
+
+    with st.form("tag_create_form", clear_on_submit=True):
+        name_col, btn_col = st.columns([5, 1])
+        new_tag = name_col.text_input(
+            _t("tags_new_label"),
+            key="new_tag_name",
+            placeholder=_t("tags_new_placeholder"),
+        )
+        create_tag = btn_col.form_submit_button(_t("tags_create_btn"), use_container_width=True)
+
+    if create_tag:
+        tag = _normalize_tag_name(new_tag)
+        existing = {item.lower() for item in tag_store.get("tags", []) if isinstance(item, str)}
+        if not tag:
+            st.warning(_t("tags_invalid"))
+        elif tag.lower() in existing:
+            st.info(_t("tags_exists", tag=tag))
+        else:
+            updated_store = {
+                "tags": sorted([*tag_store.get("tags", []), tag], key=str.lower),
+                "workspace_tags": dict(tag_store.get("workspace_tags", {})),
+            }
+            save_tag_store(updated_store)
+            st.rerun()
+
+    all_tags = list(tag_store.get("tags", [])) if isinstance(tag_store.get("tags", []), list) else []
+    if not all_tags:
+        st.markdown(
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">🏷️</div>'
+            f'<div class="empty-state-text">{_t("tags_empty_state")}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    usage_by_tag = {
+        tag: sum(1 for workspace in workspaces if tag in workspace.get("tags", []))
+        for tag in all_tags
+    }
+    st.caption(_t("tags_count", n=len(all_tags)))
+
+    for tag in all_tags:
+        info_col, del_col = st.columns([8, 1])
+        info_col.markdown(
+            f'<div class="ws-sess-item">'
+            f'<b>{_html.escape(tag)}</b>'
+            f'<br><span class="ws-sess-meta">{_t("tags_usage", n=usage_by_tag[tag])}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        if del_col.button(_t("tags_delete_btn"), key=f'tag_delete_{tag}', use_container_width=True):
+            updated_store = {
+                "tags": [item for item in all_tags if item != tag],
+                "workspace_tags": {
+                    ws_hash: [item for item in items if item != tag]
+                    for ws_hash, items in dict(tag_store.get("workspace_tags", {})).items()
+                },
+            }
+            save_tag_store(updated_store)
+            st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -955,6 +1153,8 @@ def main() -> None:
     sessions   = build_session_index(messages, summaries)
     ws_paths   = load_workspace_paths()
     workspaces = build_workspace_index(summaries, ws_paths)
+    tag_store  = load_tag_store()
+    apply_tags_to_data(sessions, workspaces, tag_store)
 
     # ------------------------------------------------------------------
     # Sidebar
@@ -991,6 +1191,13 @@ def main() -> None:
         sources    = sorted({s["source"] for s in sessions.values()})
         source_sel = st.multiselect(_t("source_filter_label"), sources, default=sources)
         hide_empty = st.checkbox(_t("hide_empty"), value=True)
+        all_tags = list(tag_store.get("tags", [])) if isinstance(tag_store.get("tags", []), list) else []
+        if "tag_filter" not in st.session_state:
+            st.session_state["tag_filter"] = []
+        st.session_state["tag_filter"] = [tag for tag in st.session_state["tag_filter"] if tag in all_tags]
+        selected_tags = st.multiselect(_t("tags_filter_label"), all_tags, key="tag_filter")
+        if not all_tags:
+            st.caption(_t("tags_filter_empty"))
 
         st.divider()
 
@@ -1000,6 +1207,7 @@ def main() -> None:
             if s["source"] in source_sel
             and (not hide_empty or s["user_turns"] > 0 or s["assistant_turns"] > 0)
             and (not search or search.lower() in s["_search_text"])
+            and _matches_selected_tags(s.get("tags", []), selected_tags)
         ]
 
         st.caption(_t("sessions_found", n=len(filtered)))
@@ -1084,13 +1292,21 @@ def main() -> None:
         )
         return
 
-    tab1, tab2, tab3 = st.tabs([_t("tab_conversation"), _t("tab_diary"), _t("tab_workspaces")])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        _t("tab_conversation"),
+        _t("tab_diary"),
+        _t("tab_workspaces"),
+        _t("tab_tags"),
+    ])
 
     with tab2:
-        tab_diario(sessions)
+        tab_diario(sessions, selected_tags)
 
     with tab3:
-        tab_workspaces(workspaces)
+        tab_workspaces(workspaces, tag_store, selected_tags)
+
+    with tab4:
+        tab_tags(tag_store, workspaces)
 
     if selected_tid and selected_tid in sessions:
         session = sessions[selected_tid]

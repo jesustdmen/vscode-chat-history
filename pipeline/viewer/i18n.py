@@ -29,11 +29,14 @@ TRANSLATIONS: dict[str, dict] = {
         "pipeline_error":       "Pipeline encerrou com erro. Veja o log acima.",
         "pipeline_launch_error":"Erro ao iniciar pipeline: {exc}",
         "language_label":       "🌐 Idioma",
+        "tags_filter_label":    "🏷️ Tags",
+        "tags_filter_empty":    "Nenhuma tag cadastrada ainda.",
 
         # Tabs
         "tab_conversation":     "💬 Conversa",
         "tab_diary":            "📅 Diário de Atividades",
         "tab_workspaces":       "🗂️ Workspaces",
+        "tab_tags":             "🏷️ Tags",
 
         # Mensagens de chat
         "role_user":            "Você",
@@ -82,6 +85,21 @@ TRANSLATIONS: dict[str, dict] = {
         "ws_questions":         "{u} perguntas",
         "ws_answers":           "{a} respostas",
         "expand_sessions":      "Ver {n} sessão(ões) de '{folder}'",
+        "workspace_tags_label": "Tags do workspace",
+        "workspace_tags_empty": "Crie tags na aba Tags para começar a categorizar workspaces.",
+
+        # Aba Tags
+        "tags_title":           "Tags",
+        "tags_caption":         "Crie tags e use-as para categorizar workspaces e filtrar sessões.",
+        "tags_new_label":       "Nova tag",
+        "tags_new_placeholder": "Ex.: cliente A, financeiro, urgente",
+        "tags_create_btn":      "Criar",
+        "tags_invalid":         "Informe um nome de tag válido.",
+        "tags_exists":          "A tag '{tag}' já existe.",
+        "tags_empty_state":     "Nenhuma tag criada ainda.",
+        "tags_count":           "{n} tag(s) cadastrada(s).",
+        "tags_usage":           "Usada em {n} workspace(s)",
+        "tags_delete_btn":      "Excluir",
 
         # Estados gerais
         "no_data_error":        "Arquivo `sessions.jsonl` não encontrado em:\n`{path}`\n\nExecute o pipeline primeiro:\n```\npython pipeline/02_normalize/normalize.py\n```",
@@ -123,11 +141,14 @@ TRANSLATIONS: dict[str, dict] = {
         "pipeline_error":       "Pipeline exited with error. See log above.",
         "pipeline_launch_error":"Error starting pipeline: {exc}",
         "language_label":       "🌐 Language",
+        "tags_filter_label":    "🏷️ Tags",
+        "tags_filter_empty":    "No tags created yet.",
 
         # Tabs
         "tab_conversation":     "💬 Conversation",
         "tab_diary":            "📅 Activity Log",
         "tab_workspaces":       "🗂️ Workspaces",
+        "tab_tags":             "🏷️ Tags",
 
         # Chat messages
         "role_user":            "You",
@@ -176,6 +197,21 @@ TRANSLATIONS: dict[str, dict] = {
         "ws_questions":         "{u} questions",
         "ws_answers":           "{a} answers",
         "expand_sessions":      "View {n} session(s) from '{folder}'",
+        "workspace_tags_label": "Workspace tags",
+        "workspace_tags_empty": "Create tags in the Tags tab to start categorizing workspaces.",
+
+        # Tags tab
+        "tags_title":           "Tags",
+        "tags_caption":         "Create tags and use them to categorize workspaces and filter sessions.",
+        "tags_new_label":       "New tag",
+        "tags_new_placeholder": "E.g.: client A, finance, urgent",
+        "tags_create_btn":      "Create",
+        "tags_invalid":         "Enter a valid tag name.",
+        "tags_exists":          "The tag '{tag}' already exists.",
+        "tags_empty_state":     "No tags created yet.",
+        "tags_count":           "{n} tag(s) created.",
+        "tags_usage":           "Used in {n} workspace(s)",
+        "tags_delete_btn":      "Delete",
 
         # General states
         "no_data_error":        "File `sessions.jsonl` not found at:\n`{path}`\n\nRun the pipeline first:\n```\npython pipeline/02_normalize/normalize.py\n```",
@@ -217,11 +253,14 @@ TRANSLATIONS: dict[str, dict] = {
         "pipeline_error":       "El pipeline terminó con error. Ver el registro arriba.",
         "pipeline_launch_error":"Error al iniciar el pipeline: {exc}",
         "language_label":       "🌐 Idioma",
+        "tags_filter_label":    "🏷️ Tags",
+        "tags_filter_empty":    "Todavía no hay tags creadas.",
 
         # Tabs
         "tab_conversation":     "💬 Conversación",
         "tab_diary":            "📅 Diario de Actividad",
         "tab_workspaces":       "🗂️ Espacios de trabajo",
+        "tab_tags":             "🏷️ Tags",
 
         # Chat messages
         "role_user":            "Tú",
@@ -270,6 +309,21 @@ TRANSLATIONS: dict[str, dict] = {
         "ws_questions":         "{u} preguntas",
         "ws_answers":           "{a} respuestas",
         "expand_sessions":      "Ver {n} sesión/sesiones de '{folder}'",
+        "workspace_tags_label": "Tags del workspace",
+        "workspace_tags_empty": "Crea tags en la pestaña Tags para empezar a categorizar workspaces.",
+
+        # Pestaña Tags
+        "tags_title":           "Tags",
+        "tags_caption":         "Crea tags y úsalas para categorizar workspaces y filtrar sesiones.",
+        "tags_new_label":       "Nueva tag",
+        "tags_new_placeholder": "Ej.: cliente A, finanzas, urgente",
+        "tags_create_btn":      "Crear",
+        "tags_invalid":         "Introduce un nombre de tag válido.",
+        "tags_exists":          "La tag '{tag}' ya existe.",
+        "tags_empty_state":     "Todavía no hay tags creadas.",
+        "tags_count":           "{n} tag(s) creada(s).",
+        "tags_usage":           "Usada en {n} workspace(s)",
+        "tags_delete_btn":      "Eliminar",
 
         # General states
         "no_data_error":        "Archivo `sessions.jsonl` no encontrado en:\n`{path}`\n\nEjecuta el pipeline primero:\n```\npython pipeline/02_normalize/normalize.py\n```",
