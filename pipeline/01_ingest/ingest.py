@@ -44,6 +44,13 @@ from pipeline.lib.db_reader import (
     find_workspace_vscdb_files,
     read_vscdb_keys,
 )
+from pipeline.lib.incremental_state import (
+    file_fingerprint,
+    load_incremental_state,
+    remove_missing_files,
+    save_incremental_state,
+    upsert_file_state,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -117,6 +124,31 @@ def _dump_keys_sidecar(db_copy: Path, key_regex: str) -> Path:
     return sidecar
 
 
+def _change_status(
+    previous_state: dict,
+    source_path: Path,
+    fingerprint: dict,
+) -> str:
+    files = previous_state.get("files", {})
+    if not isinstance(files, dict):
+        return "new"
+
+    prev = files.get(str(source_path))
+    if not isinstance(prev, dict):
+        return "new"
+
+    prev_fp = prev.get("fingerprint", {})
+    if not isinstance(prev_fp, dict):
+        return "changed"
+
+    if (
+        prev_fp.get("mtime_ns") == fingerprint.get("mtime_ns")
+        and prev_fp.get("size") == fingerprint.get("size")
+    ):
+        return "unchanged"
+    return "changed"
+
+
 # ---------------------------------------------------------------------------
 # Lógica principal
 # ---------------------------------------------------------------------------
@@ -136,6 +168,11 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
     manifest: list[dict] = []
     copied_count = 0
     skipped_count = 0
+    state = load_incremental_state()
+    seen_paths: set[str] = set()
+    changed_count = 0
+    unchanged_count = 0
+    new_count = 0
 
     # ------------------------------------------------------------------
     # 1/4. globalStorage/state.vscdb
@@ -144,6 +181,8 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
     if GLOBAL_STATE_DB.exists():
         rel = Path("globalStorage") / "state.vscdb"
         dest = snapshot_dir / rel
+        fingerprint = file_fingerprint(GLOBAL_STATE_DB)
+        change = _change_status(state, GLOBAL_STATE_DB, fingerprint)
         if _copy_file(GLOBAL_STATE_DB, dest):
             sidecar = _dump_keys_sidecar(dest, KEY_REGEX)
             manifest.append({
@@ -152,7 +191,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                 "dest": str(dest.relative_to(snapshot_dir)),
                 "sidecar": sidecar.name,
                 "workspace_hash": None,
+                "change": change,
             })
+            upsert_file_state(
+                state,
+                str(GLOBAL_STATE_DB),
+                fingerprint=fingerprint,
+                file_type="vscdb",
+                workspace_hash=None,
+                status=change,
+            )
+            seen_paths.add(str(GLOBAL_STATE_DB))
+            if change == "new":
+                new_count += 1
+            elif change == "unchanged":
+                unchanged_count += 1
+            else:
+                changed_count += 1
             copied_count += 1
     else:
         _log.warning("Não encontrado: %s", GLOBAL_STATE_DB)
@@ -169,6 +224,8 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
             ws_hash = src_db.parent.name
             rel = Path("workspaceStorage") / ws_hash / "state.vscdb"
             dest = snapshot_dir / rel
+            fingerprint = file_fingerprint(src_db)
+            change = _change_status(state, src_db, fingerprint)
             if _copy_file(src_db, dest):
                 sidecar = _dump_keys_sidecar(dest, KEY_REGEX)
                 manifest.append({
@@ -177,7 +234,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                     "dest": str(dest.relative_to(snapshot_dir)),
                     "sidecar": sidecar.name,
                     "workspace_hash": ws_hash,
+                    "change": change,
                 })
+                upsert_file_state(
+                    state,
+                    str(src_db),
+                    fingerprint=fingerprint,
+                    file_type="vscdb",
+                    workspace_hash=ws_hash,
+                    status=change,
+                )
+                seen_paths.add(str(src_db))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
                 copied_count += 1
     else:
         _log.warning("Pasta não encontrada: %s", WORKSPACE_STORAGE_DIR)
@@ -194,6 +267,8 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                 ws_hash = src_file.parent.name
                 rel = Path("workspaceStorage") / ws_hash / src_file.name
                 dest = snapshot_dir / rel
+                fingerprint = file_fingerprint(src_file)
+                change = _change_status(state, src_file, fingerprint)
                 if _copy_file(src_file, dest):
                     manifest.append({
                         "type": ext.lstrip("."),
@@ -201,7 +276,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                         "dest": str(dest.relative_to(snapshot_dir)),
                         "sidecar": None,
                         "workspace_hash": ws_hash,
+                        "change": change,
                     })
+                    upsert_file_state(
+                        state,
+                        str(src_file),
+                        fingerprint=fingerprint,
+                        file_type=ext.lstrip("."),
+                        workspace_hash=ws_hash,
+                        status=change,
+                    )
+                    seen_paths.add(str(src_file))
+                    if change == "new":
+                        new_count += 1
+                    elif change == "unchanged":
+                        unchanged_count += 1
+                    else:
+                        changed_count += 1
                     copied_count += 1
 
     # ------------------------------------------------------------------
@@ -218,6 +309,8 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                 session_id = src_file.stem
                 seen_ids.add(session_id)
                 size = src_file.stat().st_size
+                fingerprint = file_fingerprint(src_file)
+                change = _change_status(state, src_file, fingerprint)
                 rel = Path("workspaceStorage") / ws_hash / session_dir_name / src_file.name
                 dest = snapshot_dir / rel
                 if size > max_bytes:
@@ -230,7 +323,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                         "session_id": session_id,
                         "status": "too_large",
                         "size_mb": round(size / 1024 / 1024, 1),
+                        "change": change,
                     })
+                    upsert_file_state(
+                        state,
+                        str(src_file),
+                        fingerprint=fingerprint,
+                        file_type="chat_session_json",
+                        workspace_hash=ws_hash,
+                        status="too_large",
+                    )
+                    seen_paths.add(str(src_file))
+                    if change == "new":
+                        new_count += 1
+                    elif change == "unchanged":
+                        unchanged_count += 1
+                    else:
+                        changed_count += 1
                     skipped_count += 1
                     _log.warning(
                         "[too_large %d MB] %s/%s/%s",
@@ -247,7 +356,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                         "session_id": session_id,
                         "status": "copied",
                         "size_mb": round(size / 1024 / 1024, 1),
+                        "change": change,
                     })
+                    upsert_file_state(
+                        state,
+                        str(src_file),
+                        fingerprint=fingerprint,
+                        file_type="chat_session_json",
+                        workspace_hash=ws_hash,
+                        status=change,
+                    )
+                    seen_paths.add(str(src_file))
+                    if change == "new":
+                        new_count += 1
+                    elif change == "unchanged":
+                        unchanged_count += 1
+                    else:
+                        changed_count += 1
                     copied_count += 1
 
             # Copia .jsonl apenas se NÃO existe .json correspondente
@@ -257,6 +382,8 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                 if session_id in seen_ids:
                     continue  # .json já capturado
                 size = src_file.stat().st_size
+                fingerprint = file_fingerprint(src_file)
+                change = _change_status(state, src_file, fingerprint)
                 rel = Path("workspaceStorage") / ws_hash / session_dir_name / src_file.name
                 dest = snapshot_dir / rel
                 if size > max_bytes:
@@ -269,7 +396,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                         "session_id": session_id,
                         "status": "too_large",
                         "size_mb": round(size / 1024 / 1024, 1),
+                        "change": change,
                     })
+                    upsert_file_state(
+                        state,
+                        str(src_file),
+                        fingerprint=fingerprint,
+                        file_type="chat_session_jsonl",
+                        workspace_hash=ws_hash,
+                        status="too_large",
+                    )
+                    seen_paths.add(str(src_file))
+                    if change == "new":
+                        new_count += 1
+                    elif change == "unchanged":
+                        unchanged_count += 1
+                    else:
+                        changed_count += 1
                     skipped_count += 1
                     continue
                 if _copy_file(src_file, dest):
@@ -282,7 +425,23 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                         "session_id": session_id,
                         "status": "copied",
                         "size_mb": round(size / 1024 / 1024, 1),
+                        "change": change,
                     })
+                    upsert_file_state(
+                        state,
+                        str(src_file),
+                        fingerprint=fingerprint,
+                        file_type="chat_session_jsonl",
+                        workspace_hash=ws_hash,
+                        status=change,
+                    )
+                    seen_paths.add(str(src_file))
+                    if change == "new":
+                        new_count += 1
+                    elif change == "unchanged":
+                        unchanged_count += 1
+                    else:
+                        changed_count += 1
                     copied_count += 1
 
         total_chat = sum(1 for m in manifest if m.get("type") in ("chat_session_json", "chat_session_jsonl"))
@@ -299,11 +458,17 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
         "ts_utc": datetime.now(tz=timezone.utc).isoformat(),
         "files_copied": copied_count,
         "files_skipped": skipped_count,
+        "files_new": new_count,
+        "files_changed": changed_count,
+        "files_unchanged": unchanged_count,
     }
     with manifest_path.open("w", encoding="utf-8") as fh:
         fh.write(json.dumps(meta, ensure_ascii=False) + "\n")
         for entry in manifest:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    removed_paths = remove_missing_files(state, seen_paths)
+    save_incremental_state(state)
 
     # ------------------------------------------------------------------
     # Limpeza de snapshots antigos (mantém atual + anterior)
@@ -313,6 +478,10 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
     print(f"\n{'='*60}")
     print(f"  Copiados : {copied_count}")
     print(f"  Ignorados: {skipped_count}")
+    print(f"  Novos    : {new_count}")
+    print(f"  Alterados: {changed_count}")
+    print(f"  Iguais   : {unchanged_count}")
+    print(f"  Removidos: {len(removed_paths)}")
     print(f"  Manifesto: {manifest_path}")
     print(f"{'='*60}\n")
 

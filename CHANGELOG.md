@@ -20,6 +20,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [Sem versão] — 2026-03-16
+
+### Adicionado
+- Infraestrutura inicial de estado incremental em `pipeline/lib/incremental_state.py`
+- `pipeline/lib/config.py`: novos caminhos `output/state/` e `incremental_index.json`
+- `pipeline/01_ingest/ingest.py`: rastreamento incremental por arquivo com status `new` / `changed` / `unchanged` / `removed`
+
+### Observação
+- Nesta etapa ainda não há redução de escopo no pipeline; o ingest continua copiando tudo e agora passa a registrar fingerprints e classificação de mudança para permitir evolução incremental controlada nas próximas etapas
+
+---
+
 ## [0.1.0] — 2026-02-28
 
 ### Adicionado

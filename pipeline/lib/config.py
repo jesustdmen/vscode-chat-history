@@ -34,6 +34,11 @@ PIPELINE_ROOT: Path = Path(__file__).resolve().parents[1]
 OUTPUT_RAW: Path        = PIPELINE_ROOT / "output" / "raw"
 OUTPUT_NORMALIZED: Path = PIPELINE_ROOT / "output" / "normalized"
 OUTPUT_REPORTS: Path    = PIPELINE_ROOT / "output" / "reports"
+OUTPUT_STATE: Path      = PIPELINE_ROOT / "output" / "state"
+
+# Estado incremental local
+INCREMENTAL_STATE_SCHEMA_VERSION: str = "1.0"
+INCREMENTAL_INDEX_FILE: Path          = OUTPUT_STATE / "incremental_index.json"
 
 # ---------------------------------------------------------------------------
 # Chaves SQLite de interesse (mesmo padrão do monitor PowerShell)
