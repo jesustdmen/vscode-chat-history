@@ -35,6 +35,9 @@ OUTPUT_RAW: Path        = PIPELINE_ROOT / "output" / "raw"
 OUTPUT_NORMALIZED: Path = PIPELINE_ROOT / "output" / "normalized"
 OUTPUT_REPORTS: Path    = PIPELINE_ROOT / "output" / "reports"
 OUTPUT_STATE: Path      = PIPELINE_ROOT / "output" / "state"
+OUTPUT_NORMALIZED_SHARDS: Path = OUTPUT_NORMALIZED / "shards"
+OUTPUT_NORMALIZED_MESSAGE_SHARDS: Path = OUTPUT_NORMALIZED_SHARDS / "messages"
+OUTPUT_NORMALIZED_SUMMARY_SHARDS: Path = OUTPUT_NORMALIZED_SHARDS / "summaries"
 
 # Estado incremental local
 INCREMENTAL_STATE_SCHEMA_VERSION: str = "1.0"

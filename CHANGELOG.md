@@ -26,9 +26,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 - Infraestrutura inicial de estado incremental em `pipeline/lib/incremental_state.py`
 - `pipeline/lib/config.py`: novos caminhos `output/state/` e `incremental_index.json`
 - `pipeline/01_ingest/ingest.py`: rastreamento incremental por arquivo com status `new` / `changed` / `unchanged` / `removed`
+- `pipeline/02_normalize/normalize.py`: shards por arquivo em `output/normalized/shards/` com reaproveitamento para fontes `unchanged`
 
 ### Observação
-- Nesta etapa ainda não há redução de escopo no pipeline; o ingest continua copiando tudo e agora passa a registrar fingerprints e classificação de mudança para permitir evolução incremental controlada nas próximas etapas
+- O viewer continua compatível porque `sessions.jsonl` e `summaries.jsonl` seguem sendo materializados ao final; o ganho incremental começa no reaproveitamento de shards do normalize
 
 ---
 
