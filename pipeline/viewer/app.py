@@ -355,19 +355,22 @@ def build_session_index(messages: list[dict], summaries: list[dict]) -> dict[str
     def _make(s: dict, src: str) -> dict:
         tid        = s.get("thread_id") or s.get("session_id") or ""
         title      = (s.get("title") or "").strip() or "__NO_TITLE__"
-        last_ts    = s.get("last_ts") or ""
-        date_label = ts_to_date_brt(last_ts) if last_ts else "—"
         msgs = sorted(
             [m for m in by_thread.get(tid, []) if m.get("role") != "system"],
             key=lambda m: m.get("timestamp") or "",
         )
+        first_ts   = s.get("first_ts") or next((m.get("timestamp") or "" for m in msgs if m.get("timestamp")), "")
+        last_ts    = s.get("last_ts") or ""
+        created_label = ts_to_date_brt(first_ts) if first_ts else "—"
+        date_label = ts_to_date_brt(last_ts) if last_ts else "—"
         search_text = " ".join([
             title.lower(), tid.lower(), src.lower(),
             " ".join((m.get("text") or "").lower() for m in msgs),
         ])
         return {
             "thread_id": tid, "title": title, "source": src,
-            "last_ts": last_ts, "date_label": date_label,
+            "first_ts": first_ts, "last_ts": last_ts,
+            "created_label": created_label, "date_label": date_label,
             "user_turns": s.get("user_turns", 0), "assistant_turns": s.get("assistant_turns", 0),
             "tool_calls": s.get("tool_calls", 0), "message_count": len(msgs),
             "messages": msgs, "workspace_hash": s.get("workspace_hash") or "",
@@ -431,9 +434,14 @@ _CSS_COMMON = """
 
 .stat-bar{display:flex;gap:16px;flex-wrap:wrap;border-radius:8px;padding:10px 16px;margin-bottom:8px}
 .stat-item{display:flex;flex-direction:column;align-items:center;min-width:70px}
+.stat-item-push{margin-left:auto}
 .stat-value{font-size:1.4rem;font-weight:700;line-height:1.1}
 .stat-label{font-size:.68rem;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
 .stat-blue{color:#3b82f6}.stat-green{color:#10b981}.stat-yellow{color:#f59e0b}.stat-gray{color:#6b7280}.stat-purple{color:#8b5cf6}
+
+@media (max-width: 900px){
+    .stat-item-push{margin-left:0}
+}
 
 .sess-header{border-radius:8px;padding:10px 14px;margin-bottom:10px}
 .sess-header-title{font-size:1.05rem;font-weight:600;margin-bottom:4px}
@@ -761,6 +769,12 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
     ws_info   = f" · 📁 <code>{_html.escape(Path(ws_folder).name or ws_folder)}</code>" if ws_folder else ""
     tid_short = session["thread_id"][:16]
     tag_html  = _tag_badges(session.get("tags", []))
+    created_display = _fmt_date_display(session.get("created_label") or "—")
+    last_display = _fmt_date_display(session.get("date_label") or "—")
+    sync_display = (
+        datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+        if _SESSIONS_FILE.exists() else "—"
+    )
 
     st.markdown(
         f'<div class="sess-header">'
@@ -783,10 +797,12 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         f'<span class="stat-label">{_t("stat_answers")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-yellow">{session["tool_calls"]}</span>'
         f'<span class="stat-label">{_t("stat_toolcalls")}</span></div>'
-        f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(_fmt_date_display(session["date_label"]))}</span>'
+        f'<div class="stat-item"><span class="stat-value stat-gray">{_html.escape(created_display)}</span>'
+        f'<span class="stat-label">{_t("stat_created")}</span></div>'
+        f'<div class="stat-item stat-item-push"><span class="stat-value stat-gray">{_html.escape(last_display)}</span>'
         f'<span class="stat-label">{_t("stat_date")}</span></div>'
         f'<div class="stat-item"><span class="stat-value stat-purple">'
-        f'{datetime.fromtimestamp(_SESSIONS_FILE.stat().st_mtime).strftime("%d/%m/%Y %H:%M") if _SESSIONS_FILE.exists() else "—"}'
+        f'{_html.escape(sync_display)}'
         f'</span><span class="stat-label">{_t("stat_sync")}</span></div>'
         f'</div>',
         unsafe_allow_html=True,

@@ -48,6 +48,7 @@ TRANSLATIONS: dict[str, dict] = {
         "stat_questions":       "Perguntas",
         "stat_answers":         "Respostas",
         "stat_toolcalls":       "Tool calls",
+        "stat_created":         "Criação",
         "stat_date":            "Data",
         "stat_sync":            "Últ. sinc.",
 
@@ -160,6 +161,7 @@ TRANSLATIONS: dict[str, dict] = {
         "stat_questions":       "Questions",
         "stat_answers":         "Answers",
         "stat_toolcalls":       "Tool calls",
+        "stat_created":         "Created",
         "stat_date":            "Date",
         "stat_sync":            "Last sync",
 
@@ -272,6 +274,7 @@ TRANSLATIONS: dict[str, dict] = {
         "stat_questions":       "Preguntas",
         "stat_answers":         "Respuestas",
         "stat_toolcalls":       "Tool calls",
+        "stat_created":         "Creación",
         "stat_date":            "Fecha",
         "stat_sync":            "Últ. sinc.",
 
