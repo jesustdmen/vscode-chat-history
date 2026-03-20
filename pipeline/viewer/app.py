@@ -462,8 +462,11 @@ _CSS_COMMON = """
 .ws-shell{border-radius:14px;padding:12px 12px 8px 12px;margin:16px 0 22px 0}
 .ws-toolbar-label{font-size:.76rem;font-weight:600;margin:0 0 8px 2px}
 .ws-session-row{border-radius:10px;padding:10px 12px;margin:8px 0}
-.ws-session-title{font-size:.84rem;font-weight:600;margin-bottom:4px}
-.ws-session-meta{font-size:.73rem}
+.ws-session-row-head{display:flex;align-items:flex-start;gap:8px;justify-content:space-between}
+.ws-session-title{font-size:.84rem;font-weight:600;margin-bottom:2px;line-height:1.35}
+.ws-session-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.ws-session-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 8px;font-size:.70rem;font-weight:600}
+.ws-session-meta{font-size:.73rem;margin-top:8px}
 .ws-block-sep{height:1px;margin:18px 0 6px 0}
 
 .day-header{padding:6px 12px;border-radius:6px;font-weight:600;font-size:.95rem;margin-top:12px}
@@ -515,6 +518,7 @@ _CSS_DARK = """
 .ws-toolbar-label{color:#cbd5e1}
 .ws-session-row{background:#151524;border:1px solid #2f2f48}
 .ws-session-title{color:#e8e8f0}
+.ws-session-chip{background:#202036;color:#cbd5e1;border:1px solid #31314a}
 .ws-session-meta{color:#94a3b8}
 .ws-block-sep{background:linear-gradient(90deg,transparent,#2f2f48,transparent)}
 
@@ -638,6 +642,7 @@ hr{border-color:#e2e8f0 !important}
 .ws-toolbar-label{color:#334155}
 .ws-session-row{background:#ffffff;border:1px solid #e2e8f0}
 .ws-session-title{color:#0f172a}
+.ws-session-chip{background:#f8fafc;color:#475569;border:1px solid #e2e8f0}
 .ws-session-meta{color:#64748b}
 .ws-block-sep{background:linear-gradient(90deg,transparent,#e2e8f0,transparent)}
 
@@ -1094,14 +1099,23 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
                 full_tid = sess["thread_id"]
                 session_tag_html = _tag_badges(sess.get("tags", []))
                 display_title = _display_title(sess["title"])
-                row_col, open_col = st.columns([12, 1])
+                row_col, open_col = st.columns([11, 1])
                 row_col.markdown(
                     f'<div class="ws-session-row">'
-                    f'<div class="ws-session-title">{_html.escape(display_title)} {_source_badge(sess["source"])}'
+                    f'<div class="ws-session-row-head">'
+                    f'<div style="min-width:0;flex:1;">'
+                    f'<div class="ws-session-title">{_html.escape(display_title)}</div>'
+                    f'<div class="ws-session-badges">'
+                    f'{_source_badge(sess["source"])}'
+                    f'<span class="ws-session-chip">📅 {dt}</span>'
+                    f'<span class="ws-session-chip">💬 {u_s}U</span>'
+                    f'<span class="ws-session-chip">🤖 {a_s}A</span>'
+                    f'</div>'
+                    f'</div>'
                     f'</div>'
                     f'{session_tag_html if session_tag_html else ""}'
                     f'<div class="ws-session-meta">'
-                    f'{dt} · {u_s}U {a_s}A · {_html.escape(tid)}…'
+                    f'{_t("ws_thread")}: <span style="font-family:monospace">{_html.escape(tid)}…</span>'
                     f'</div></div>',
                     unsafe_allow_html=True,
                 )
