@@ -96,6 +96,12 @@ def _tag_badges(tags: list[str]) -> str:
     )
 
 
+def _open_conversation(thread_id: str) -> None:
+    st.session_state["_pending_tid"] = thread_id
+    st.session_state["_goto_conversa"] = True
+    st.rerun()
+
+
 # ---------------------------------------------------------------------------
 # Markdown helper
 # ---------------------------------------------------------------------------
@@ -453,6 +459,12 @@ _CSS_COMMON = """
 .ws-meta{font-size:.78rem;margin-top:4px}
 .ws-sess-item{font-size:.82rem;padding:2px 0 2px 12px;margin:3px 0}
 .ws-sess-meta{font-size:.74rem}
+.ws-shell{border-radius:14px;padding:12px 12px 8px 12px;margin:16px 0 22px 0}
+.ws-toolbar-label{font-size:.76rem;font-weight:600;margin:0 0 8px 2px}
+.ws-session-row{border-radius:10px;padding:10px 12px;margin:8px 0}
+.ws-session-title{font-size:.84rem;font-weight:600;margin-bottom:4px}
+.ws-session-meta{font-size:.73rem}
+.ws-block-sep{height:1px;margin:18px 0 6px 0}
 
 .day-header{padding:6px 12px;border-radius:6px;font-weight:600;font-size:.95rem;margin-top:12px}
 .diary-session{margin:4px 0 4px 16px;font-size:.87rem}
@@ -499,6 +511,12 @@ _CSS_DARK = """
 .ws-meta{color:#888}
 .ws-sess-item{color:#c4c4cf;border-left:2px solid #3a3a5c}
 .ws-sess-meta{color:#888}
+.ws-shell{background:linear-gradient(180deg,rgba(30,30,46,.96),rgba(17,24,39,.56));border:1px solid #2f2f48;box-shadow:0 10px 24px rgba(0,0,0,.18)}
+.ws-toolbar-label{color:#cbd5e1}
+.ws-session-row{background:#151524;border:1px solid #2f2f48}
+.ws-session-title{color:#e8e8f0}
+.ws-session-meta{color:#94a3b8}
+.ws-block-sep{background:linear-gradient(90deg,transparent,#2f2f48,transparent)}
 
 .day-header{background:linear-gradient(90deg,#2d2d3e,#252535);color:#a78bfa;border-left:3px solid #7c3aed}
 .diary-session{color:#c4c4cf}
@@ -616,6 +634,12 @@ hr{border-color:#e2e8f0 !important}
 .ws-meta{color:#64748b}
 .ws-sess-item{color:#475569;border-left:2px solid #e2e8f0}
 .ws-sess-meta{color:#94a3b8}
+.ws-shell{background:linear-gradient(180deg,#ffffff,#f8fafc);border:1px solid #e2e8f0;box-shadow:0 8px 18px rgba(15,23,42,.05)}
+.ws-toolbar-label{color:#334155}
+.ws-session-row{background:#ffffff;border:1px solid #e2e8f0}
+.ws-session-title{color:#0f172a}
+.ws-session-meta{color:#64748b}
+.ws-block-sep{background:linear-gradient(90deg,transparent,#e2e8f0,transparent)}
 
 .day-header{background:linear-gradient(90deg,#ede9fe,#e0e7ff);color:#4338ca;border-left:3px solid #6366f1}
 .diary-session{color:#475569}
@@ -991,7 +1015,15 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
         return
 
     st.caption(_t("workspaces_count", n=len(workspaces)))
-    search = st.text_input(_t("filter_by_folder"), "", key="ws_search")
+    search_col, view_col = st.columns([4, 1.5])
+    search = search_col.text_input(_t("filter_by_folder"), "", key="ws_search")
+    view_mode = view_col.radio(
+        _t("workspace_view_label"),
+        ["list", "cards"],
+        horizontal=True,
+        format_func=lambda value: _t(f"workspace_view_{value}"),
+        key="workspace_view_mode",
+    )
     all_tags = list(tag_store.get("tags", [])) if isinstance(tag_store.get("tags", []), list) else []
     filtered = [
         w for w in workspaces
@@ -1008,17 +1040,17 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
         st.warning(_t("no_ws_filter"))
         return
 
-    for w in filtered:
+    def render_workspace(w: dict) -> None:
         folder   = w["folder"]
         h        = w["hash"]
         n_sess   = len(w["sessions"])
-        last_dt  = w["last_ts"][:10] if w["last_ts"] else "—"
-        first_dt = w["first_ts"][:10] if w["first_ts"] else "—"
+        last_dt  = _fmt_date_display(w["last_ts"][:10]) if w["last_ts"] else "—"
+        first_dt = _fmt_date_display(w["first_ts"][:10]) if w["first_ts"] else "—"
         u, a     = w["total_user"], w["total_assistant"]
         tag_html = _tag_badges(w.get("tags", []))
 
         st.markdown(
-            f'<div class="ws-card">'
+            f'<div class="ws-shell"><div class="ws-card">'
             f'<div class="ws-folder">📁 {_html.escape(folder)}</div>'
             f'<div class="ws-hash">{_html.escape(h)}</div>'
             f'<div class="ws-meta">'
@@ -1026,15 +1058,17 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
             f'{_t("ws_sessions", n=n_sess)} &nbsp;·&nbsp; {_t("ws_questions", u=u)} &nbsp;·&nbsp; {_t("ws_answers", a=a)}'
             f'</div>'
             f'{f"<div style=\"margin-top:8px\">{tag_html}</div>" if tag_html else ""}'
-            f'</div>',
+            f'</div></div>',
             unsafe_allow_html=True,
         )
+        st.markdown(f'<div class="ws-toolbar-label">{_t("workspace_tags_label")}</div>', unsafe_allow_html=True)
         if all_tags:
             selected_workspace_tags = st.multiselect(
                 _t("workspace_tags_label"),
                 all_tags,
                 default=w.get("tags", []),
                 key=f'workspace_tags_{h}',
+                label_visibility="collapsed",
             )
             selected_workspace_tags = sorted(set(selected_workspace_tags), key=str.lower)
             if selected_workspace_tags != w.get("tags", []):
@@ -1052,22 +1086,37 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
             st.caption(_t("workspace_tags_empty"))
 
         with st.expander(_t("expand_sessions", n=n_sess, folder=folder.split(chr(92))[-1] or folder), expanded=False):
-            for sess in w["sessions"]:
-                dt  = sess["last_ts"][:10] if sess["last_ts"] else "—"
+            for idx, sess in enumerate(w["sessions"]):
+                dt  = _fmt_date_display(sess["last_ts"][:10]) if sess["last_ts"] else "—"
                 u_s = sess["user_turns"]
                 a_s = sess["assistant_turns"]
                 tid = sess["thread_id"][:12]
+                full_tid = sess["thread_id"]
                 session_tag_html = _tag_badges(sess.get("tags", []))
-                st.markdown(
-                    f'<div class="ws-sess-item">'
-                    f'<b>{_html.escape(sess["title"])}</b>'
-                    f' {_source_badge(sess["source"])}'
-                    f'{f"<br>{session_tag_html}" if session_tag_html else ""}'
-                    f'<br><span class="ws-sess-meta">'
+                display_title = _display_title(sess["title"])
+                row_col, open_col = st.columns([12, 1])
+                row_col.markdown(
+                    f'<div class="ws-session-row">'
+                    f'<div class="ws-session-title">{_html.escape(display_title)} {_source_badge(sess["source"])}'
+                    f'</div>'
+                    f'{session_tag_html if session_tag_html else ""}'
+                    f'<div class="ws-session-meta">'
                     f'{dt} · {u_s}U {a_s}A · {_html.escape(tid)}…'
-                    f'</span></div>',
+                    f'</div></div>',
                     unsafe_allow_html=True,
                 )
+                if open_col.button("↗", key=f'ws_open_{h}_{idx}_{full_tid}', help=_t("goto_conversation")):
+                    _open_conversation(full_tid)
+        st.markdown('<div class="ws-block-sep"></div>', unsafe_allow_html=True)
+
+    if view_mode == "cards":
+        cols = st.columns(2)
+        for idx, workspace in enumerate(filtered):
+            with cols[idx % 2]:
+                render_workspace(workspace)
+    else:
+        for workspace in filtered:
+            render_workspace(workspace)
 
 
 def tab_tags(tag_store: dict[str, object], workspaces: list[dict]) -> None:
