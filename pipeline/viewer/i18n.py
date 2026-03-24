@@ -61,6 +61,10 @@ TRANSLATIONS: dict[str, dict] = {
         "export_json_btn":      "⬇️ Exportar JSON",
         "no_messages":          "Nenhuma mensagem encontrada para esta sessão.",
         "show_tool_calls":      "Mostrar tool calls",
+        "conversation_window_label": "Mensagens",
+        "conversation_window_last":  "Últimas {n}",
+        "conversation_window_all":   "Todas",
+        "conversation_render_meta":  "Mostrando {shown} de {total} mensagem(ns). {hidden} ocultada(s) para manter a tela responsiva.",
 
         # Tab Diário
         "diary_title":          "Diário de Atividades",
@@ -178,6 +182,10 @@ TRANSLATIONS: dict[str, dict] = {
         "export_json_btn":      "⬇️ Export JSON",
         "no_messages":          "No messages found for this session.",
         "show_tool_calls":      "Show tool calls",
+        "conversation_window_label": "Messages",
+        "conversation_window_last":  "Last {n}",
+        "conversation_window_all":   "All",
+        "conversation_render_meta":  "Showing {shown} of {total} message(s). {hidden} hidden to keep the view responsive.",
 
         # Activity Log tab
         "diary_title":          "Activity Log",
@@ -295,6 +303,10 @@ TRANSLATIONS: dict[str, dict] = {
         "export_json_btn":      "⬇️ Exportar JSON",
         "no_messages":          "No se encontraron mensajes para esta sesión.",
         "show_tool_calls":      "Mostrar tool calls",
+        "conversation_window_label": "Mensajes",
+        "conversation_window_last":  "Últimos {n}",
+        "conversation_window_all":   "Todos",
+        "conversation_render_meta":  "Mostrando {shown} de {total} mensaje(s). {hidden} oculto(s) para mantener la vista responsiva.",
 
         # Diario tab
         "diary_title":          "Diario de Actividad",

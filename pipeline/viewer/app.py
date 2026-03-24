@@ -105,6 +105,7 @@ def _open_conversation(thread_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Markdown helper
 # ---------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
 def _md_to_html(text: str, nl2br: bool = False) -> str:
     exts = ["tables", "fenced_code", "sane_lists"]
     if nl2br:
@@ -889,8 +890,29 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         )
         return
 
-    show_tools = st.checkbox(_t("show_tool_calls"), value=False)
-    for m in msgs:
+    control_col, info_col = st.columns([1.2, 3])
+    show_tools = control_col.checkbox(_t("show_tool_calls"), value=False)
+    window_options = [50, 100, 200, 500, 0]
+    window_size = control_col.selectbox(
+        _t("conversation_window_label"),
+        window_options,
+        index=1,
+        format_func=lambda value: _t("conversation_window_all") if value == 0 else _t("conversation_window_last", n=value),
+    )
+
+    visible_msgs = [m for m in msgs if show_tools or m.get("role") != "tool"]
+    rendered_msgs = visible_msgs if window_size == 0 else visible_msgs[-window_size:]
+    hidden_count = len(visible_msgs) - len(rendered_msgs)
+    info_col.caption(
+        _t(
+            "conversation_render_meta",
+            shown=len(rendered_msgs),
+            total=len(visible_msgs),
+            hidden=hidden_count,
+        )
+    )
+
+    for m in rendered_msgs:
         if m.get("role") == "tool" and not show_tools:
             continue
         render_message(m)
