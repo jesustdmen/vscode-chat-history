@@ -242,13 +242,14 @@ def _to_brt(ts_iso: str | None) -> str | None:
 def load_data() -> tuple[list[dict], list[dict]]:
     def read_jsonl(path: Path) -> list[dict]:
         out = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    try:
+                        out.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
         return out
     return read_jsonl(_SESSIONS_FILE), read_jsonl(_SUMMARIES_FILE)
 
@@ -292,41 +293,33 @@ def save_tag_store(store: dict[str, object]) -> None:
     _TAGS_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def apply_tags_to_data(
-    sessions: dict[str, dict],
-    workspaces: list[dict],
-    tag_store: dict[str, object],
-) -> None:
-    workspace_tags = tag_store.get("workspace_tags", {})
-    if not isinstance(workspace_tags, dict):
-        workspace_tags = {}
-
-    for session in sessions.values():
-        tags = list(workspace_tags.get(session.get("workspace_hash") or "", []))
-        session["tags"] = tags
-        if tags:
-            session["_search_text"] = f'{session["_search_text"]} ' + " ".join(tag.lower() for tag in tags)
-
-    for workspace in workspaces:
-        tags = list(workspace_tags.get(workspace.get("hash") or "", []))
-        workspace["tags"] = tags
-        for sess in workspace.get("sessions", []):
-            sess["tags"] = list(tags)
-
-
 @st.cache_data(show_spinner=False)
-def build_workspace_index(summaries: list[dict], ws_paths: dict[str, str]) -> list[dict]:
+def build_workspace_index(summaries: list[dict], ws_paths: dict[str, str], workspace_tags: dict[str, list[str]] | None = None) -> list[dict]:
+    def should_replace(existing: dict, candidate: dict) -> bool:
+        existing_is_index = existing.get("source") == "chat_session_index"
+        candidate_is_index = candidate.get("source") == "chat_session_index"
+        if existing_is_index != candidate_is_index:
+            return not candidate_is_index
+
+        existing_turns = existing.get("user_turns", 0) + existing.get("assistant_turns", 0)
+        candidate_turns = candidate.get("user_turns", 0) + candidate.get("assistant_turns", 0)
+        if candidate_turns != existing_turns:
+            return candidate_turns > existing_turns
+
+        return (candidate.get("last_ts") or "") > (existing.get("last_ts") or "")
+
     by_hash: dict[str, dict] = {}
     for s in summaries:
         h   = s.get("workspace_hash") or ""
+        tid = s.get("thread_id") or s.get("session_id") or ""
         src = s.get("source", "")
-        if not h or src == "agent_sessions":
+        if not h or not tid or src == "agent_sessions":
             continue
         if h not in by_hash:
             by_hash[h] = {
                 "hash": h, "folder": ws_paths.get(h, "—"),
                 "first_ts": s.get("first_ts") or "", "last_ts": s.get("last_ts") or "",
-                "sessions": [], "total_user": 0, "total_assistant": 0,
+                "sessions_by_tid": {},
             }
         entry = by_hash[h]
         ft, lt = s.get("first_ts") or "", s.get("last_ts") or ""
@@ -334,20 +327,33 @@ def build_workspace_index(summaries: list[dict], ws_paths: dict[str, str]) -> li
             entry["first_ts"] = ft
         if lt and lt > entry["last_ts"]:
             entry["last_ts"] = lt
-        entry["total_user"]      += s.get("user_turns", 0)
-        entry["total_assistant"] += s.get("assistant_turns", 0)
-        entry["sessions"].append({
-            "thread_id": s.get("thread_id") or "", "title": (s.get("title") or "").strip() or "__NO_TITLE__",
+        candidate = {
+            "thread_id": tid, "title": (s.get("title") or "").strip() or "__NO_TITLE__",
             "last_ts": lt, "user_turns": s.get("user_turns", 0),
             "assistant_turns": s.get("assistant_turns", 0), "source": src,
-        })
+        }
+        existing = entry["sessions_by_tid"].get(tid)
+        if existing is None or should_replace(existing, candidate):
+            entry["sessions_by_tid"][tid] = candidate
+
     for entry in by_hash.values():
-        entry["sessions"].sort(key=lambda x: x["last_ts"], reverse=True)
+        sessions = sorted(
+            entry.pop("sessions_by_tid").values(),
+            key=lambda x: x["last_ts"],
+            reverse=True,
+        )
+        ws_tags = list((workspace_tags or {}).get(entry["hash"], []))
+        for sess in sessions:
+            sess["tags"] = list(ws_tags)
+        entry["sessions"] = sessions
+        entry["tags"] = ws_tags
+        entry["total_user"] = sum(item["user_turns"] for item in sessions)
+        entry["total_assistant"] = sum(item["assistant_turns"] for item in sessions)
     return sorted(by_hash.values(), key=lambda x: x["last_ts"], reverse=True)
 
 
 @st.cache_data(show_spinner=False)
-def build_session_index(messages: list[dict], summaries: list[dict]) -> dict[str, dict]:
+def build_session_index(messages: list[dict], summaries: list[dict], workspace_tags: dict[str, list[str]] | None = None) -> dict[str, dict]:
     """
     Retorna dict: thread_id → session dict.
     Inclui '_search_text' pré-computado para busca eficiente (sem iterar
@@ -370,9 +376,12 @@ def build_session_index(messages: list[dict], summaries: list[dict]) -> dict[str
         last_ts    = s.get("last_ts") or ""
         created_label = ts_to_date_brt(first_ts) if first_ts else "—"
         date_label = ts_to_date_brt(last_ts) if last_ts else "—"
+        ws_hash = s.get("workspace_hash") or ""
+        tags    = list((workspace_tags or {}).get(ws_hash, []))
         search_text = " ".join([
             title.lower(), tid.lower(), src.lower(),
             " ".join((m.get("text") or "").lower() for m in msgs),
+            " ".join(t.lower() for t in tags),
         ])
         return {
             "thread_id": tid, "title": title, "source": src,
@@ -380,8 +389,8 @@ def build_session_index(messages: list[dict], summaries: list[dict]) -> dict[str
             "created_label": created_label, "date_label": date_label,
             "user_turns": s.get("user_turns", 0), "assistant_turns": s.get("assistant_turns", 0),
             "tool_calls": s.get("tool_calls", 0), "message_count": len(msgs),
-            "messages": msgs, "workspace_hash": s.get("workspace_hash") or "",
-            "_search_text": search_text,
+            "messages": msgs, "workspace_hash": ws_hash,
+            "_search_text": search_text, "tags": tags,
         }
 
     sessions: dict[str, dict] = {}
@@ -838,12 +847,17 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         unsafe_allow_html=True,
     )
 
-    # Exportação JSON
-    payload    = build_session_json(session)
-    safe_title = _safe_filename(session["title"])
-    fname      = f"{session['date_label']}_{safe_title}.json"
-    json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    n_exchanges = len(payload["session"]["exchanges"])
+    # Exportação JSON — recalcula apenas quando a sessão muda (evita pickle+json a cada rerun)
+    safe_title  = _safe_filename(session["title"])
+    fname       = f"{session['date_label']}_{safe_title}.json"
+    _export_key = (session["thread_id"], session.get("last_ts", ""))
+    if st.session_state.get("_export_cache_key") != _export_key:
+        st.session_state["_export_cache_key"] = _export_key
+        _payload = build_session_json(session)
+        st.session_state["_export_payload"] = _payload
+        st.session_state["_export_bytes"]   = json.dumps(_payload, ensure_ascii=False, indent=2).encode("utf-8")
+    json_bytes  = st.session_state["_export_bytes"]
+    n_exchanges = len(st.session_state["_export_payload"]["session"]["exchanges"])
     ws_chat_dir = Path(ws_folder) / "_chatsession" if ws_folder else None
 
     bcol, ccol = st.columns([1, 5])
@@ -1235,29 +1249,24 @@ def main() -> None:
     if "_pending_tid" in st.session_state:
         st.session_state["selected_tid"] = st.session_state.pop("_pending_tid")
 
-    # JS para trocar para a aba Conversa quando solicitado do Diário
     if st.session_state.pop("_goto_conversa", False):
-        import streamlit.components.v1 as components
-        components.html(
-            """<script>
-            setTimeout(function(){
-                var tabs=window.parent.document.querySelectorAll('[data-testid="stTab"]');
-                if(tabs.length>0) tabs[0].click();
-            },120);
-            </script>""",
-            height=0,
-        )
+        st.session_state["active_view"] = "conversation"
+
+    if "active_view" not in st.session_state:
+        st.session_state["active_view"] = "conversation"
 
     if not _SESSIONS_FILE.exists():
         st.error(_t("no_data_error", path=_SESSIONS_FILE))
         st.stop()
 
     messages, summaries = load_data()
-    sessions   = build_session_index(messages, summaries)
+    tag_store      = load_tag_store()
+    workspace_tags = tag_store.get("workspace_tags", {})
+    if not isinstance(workspace_tags, dict):
+        workspace_tags = {}
+    sessions   = build_session_index(messages, summaries, workspace_tags)
     ws_paths   = load_workspace_paths()
-    workspaces = build_workspace_index(summaries, ws_paths)
-    tag_store  = load_tag_store()
-    apply_tags_to_data(sessions, workspaces, tag_store)
+    workspaces = build_workspace_index(summaries, ws_paths, workspace_tags)
 
     # ------------------------------------------------------------------
     # Sidebar
@@ -1395,29 +1404,32 @@ def main() -> None:
         )
         return
 
-    tab1, tab2, tab3, tab4 = st.tabs([
-        _t("tab_conversation"),
-        _t("tab_diary"),
-        _t("tab_workspaces"),
-        _t("tab_tags"),
-    ])
+    view = st.radio(
+        "view",
+        ["conversation", "diary", "workspaces", "tags"],
+        horizontal=True,
+        key="active_view",
+        label_visibility="collapsed",
+        format_func=lambda value: {
+            "conversation": _t("tab_conversation"),
+            "diary": _t("tab_diary"),
+            "workspaces": _t("tab_workspaces"),
+            "tags": _t("tab_tags"),
+        }[value],
+    )
 
-    with tab2:
+    if view == "diary":
         tab_diario(sessions, selected_tags)
-
-    with tab3:
+    elif view == "workspaces":
         tab_workspaces(workspaces, tag_store, selected_tags)
-
-    with tab4:
+    elif view == "tags":
         tab_tags(tag_store, workspaces)
 
-    if selected_tid and selected_tid in sessions:
+    elif selected_tid and selected_tid in sessions:
         session = sessions[selected_tid]
-        with tab1:
-            tab_conversa(session, ws_paths)
+        tab_conversa(session, ws_paths)
     else:
-        with tab1:
-            st.info(_t("select_session"))
+        st.info(_t("select_session"))
 
 
 if __name__ == "__main__":

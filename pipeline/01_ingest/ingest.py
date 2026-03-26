@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -32,6 +33,10 @@ if str(_ROOT) not in sys.path:
 
 from pipeline.lib.config import (
     CHAT_SESSION_DIRS,
+    CODEX_ARCHIVED_SESSIONS_DIR,
+    CODEX_SESSION_INDEX,
+    CODEX_SESSIONS_DIR,
+    EMPTY_WINDOW_CHAT_SESSIONS_DIR,
     GLOBAL_STATE_DB,
     INGEST_FILE_EXTENSIONS,
     KEY_REGEX,
@@ -447,6 +452,262 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
         total_chat = sum(1 for m in manifest if m.get("type") in ("chat_session_json", "chat_session_jsonl"))
         too_large  = sum(1 for m in manifest if m.get("status") == "too_large")
         print(f"  Total sessões: {total_chat} ({too_large} too_large, lidas da origem)")
+
+    # ------------------------------------------------------------------
+    # 5/5. globalStorage/emptyWindowChatSessions — sessões sem workspace
+    # ------------------------------------------------------------------
+    print(f"\n[5/5] globalStorage/emptyWindowChatSessions")
+    if EMPTY_WINDOW_CHAT_SESSIONS_DIR.exists():
+        ew_seen_ids: set[str] = set()
+        for src_file in sorted(EMPTY_WINDOW_CHAT_SESSIONS_DIR.glob("*.json")):
+            session_id = src_file.stem
+            ew_seen_ids.add(session_id)
+            size = src_file.stat().st_size
+            fingerprint = file_fingerprint(src_file)
+            change = _change_status(state, src_file, fingerprint)
+            rel = Path("globalStorage") / "emptyWindowChatSessions" / src_file.name
+            dest = snapshot_dir / rel
+            if size > max_bytes:
+                manifest.append({
+                    "type": "chat_session_json",
+                    "source": str(src_file),
+                    "dest": None,
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "too_large",
+                    "size_mb": round(size / 1024 / 1024, 1),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="chat_session_json",
+                    workspace_hash=None,
+                    status="too_large",
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                skipped_count += 1
+                _log.warning("[too_large %d MB] emptyWindowChatSessions/%s", size // 1024 // 1024, src_file.name)
+                continue
+            if _copy_file(src_file, dest):
+                manifest.append({
+                    "type": "chat_session_json",
+                    "source": str(src_file),
+                    "dest": str(dest.relative_to(snapshot_dir)),
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "copied",
+                    "size_mb": round(size / 1024 / 1024, 1),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="chat_session_json",
+                    workspace_hash=None,
+                    status=change,
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                copied_count += 1
+
+        for src_file in sorted(EMPTY_WINDOW_CHAT_SESSIONS_DIR.glob("*.jsonl")):
+            session_id = src_file.stem
+            if session_id in ew_seen_ids:
+                continue  # .json já capturado
+            size = src_file.stat().st_size
+            fingerprint = file_fingerprint(src_file)
+            change = _change_status(state, src_file, fingerprint)
+            rel = Path("globalStorage") / "emptyWindowChatSessions" / src_file.name
+            dest = snapshot_dir / rel
+            if size > max_bytes:
+                manifest.append({
+                    "type": "chat_session_jsonl",
+                    "source": str(src_file),
+                    "dest": None,
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "too_large",
+                    "size_mb": round(size / 1024 / 1024, 1),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="chat_session_jsonl",
+                    workspace_hash=None,
+                    status="too_large",
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                skipped_count += 1
+                _log.warning("[too_large %d MB] emptyWindowChatSessions/%s", size // 1024 // 1024, src_file.name)
+                continue
+            if _copy_file(src_file, dest):
+                manifest.append({
+                    "type": "chat_session_jsonl",
+                    "source": str(src_file),
+                    "dest": str(dest.relative_to(snapshot_dir)),
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "copied",
+                    "size_mb": round(size / 1024 / 1024, 1),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="chat_session_jsonl",
+                    workspace_hash=None,
+                    status=change,
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                copied_count += 1
+
+        ew_total = sum(
+            1 for m in manifest
+            if m.get("workspace_hash") is None and m.get("type") in ("chat_session_json", "chat_session_jsonl")
+            and "emptyWindowChatSessions" in (m.get("source") or "")
+        )
+        print(f"  Total sessões (janela vazia): {ew_total}")
+    else:
+        _log.info("emptyWindowChatSessions não encontrado em globalStorage — ignorado")
+
+    # ------------------------------------------------------------------
+    # 6/6. ~/.codex/sessions — sessões do Codex CLI / extensão openai.chatgpt
+    # ------------------------------------------------------------------
+    print(f"\n[6/6] ~/.codex/sessions — sessões Codex")
+    if CODEX_SESSIONS_DIR.exists():
+        codex_files = sorted(CODEX_SESSIONS_DIR.rglob("*.jsonl"))
+        print(f"  Encontrados: {len(codex_files)} arquivo(s)")
+        for src_file in codex_files:
+            # Extrai UUID da sessão do nome do arquivo (rollout-<date>-<uuid>.jsonl)
+            session_id = src_file.stem
+            m = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+                          src_file.stem, re.IGNORECASE)
+            if m:
+                session_id = m.group(1)
+            # Preserva a hierarquia year/month/day/
+            try:
+                rel_to_sessions = src_file.relative_to(CODEX_SESSIONS_DIR)
+            except ValueError:
+                rel_to_sessions = Path(src_file.name)
+            rel = Path("codex_sessions") / rel_to_sessions
+            dest = snapshot_dir / rel
+            size = src_file.stat().st_size
+            fingerprint = file_fingerprint(src_file)
+            change = _change_status(state, src_file, fingerprint)
+            if _copy_file(src_file, dest):
+                manifest.append({
+                    "type": "codex_session",
+                    "source": str(src_file),
+                    "dest": str(dest.relative_to(snapshot_dir)),
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "copied",
+                    "size_mb": round(size / 1024 / 1024, 3),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="codex_session",
+                    workspace_hash=None,
+                    status=change,
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                copied_count += 1
+        # Também ingere archived_sessions/ (sessões arquivadas pelo Codex)
+        archived_files = sorted(CODEX_ARCHIVED_SESSIONS_DIR.rglob("*.jsonl")) if CODEX_ARCHIVED_SESSIONS_DIR.exists() else []
+        if archived_files:
+            print(f"  Arquivadas: {len(archived_files)} arquivo(s)")
+        for src_file in archived_files:
+            session_id = src_file.stem
+            m2 = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+                           src_file.stem, re.IGNORECASE)
+            if m2:
+                session_id = m2.group(1)
+            rel = Path("codex_sessions") / "archived" / src_file.name
+            dest = snapshot_dir / rel
+            size = src_file.stat().st_size
+            fingerprint = file_fingerprint(src_file)
+            change = _change_status(state, src_file, fingerprint)
+            if _copy_file(src_file, dest):
+                manifest.append({
+                    "type": "codex_session",
+                    "source": str(src_file),
+                    "dest": str(dest.relative_to(snapshot_dir)),
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "copied",
+                    "size_mb": round(size / 1024 / 1024, 3),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="codex_session",
+                    workspace_hash=None,
+                    status=change,
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                copied_count += 1
+
+        # Copia session_index.jsonl (títulos AI-generated por sessão)
+        if CODEX_SESSION_INDEX.exists():
+            dest_idx = snapshot_dir / "codex_sessions" / "session_index.jsonl"
+            _copy_file(CODEX_SESSION_INDEX, dest_idx)
+
+        codex_total = sum(1 for m in manifest if m.get("type") == "codex_session")
+        print(f"  Total sessões Codex: {codex_total}")
+    else:
+        _log.info("~/.codex/sessions não encontrado — extensão Codex não instalada ou sem sessões")
 
     # ------------------------------------------------------------------
     # Grava manifesto

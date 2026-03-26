@@ -573,6 +573,154 @@ def parse_chat_session_jsonl(path: Path, ws_hash: str = "") -> list[ChatMessage]
 
 
 # ---------------------------------------------------------------------------
+# Parser: ~/.codex/sessions/**/*.jsonl — sessões Codex CLI / extensão openai.chatgpt
+# ---------------------------------------------------------------------------
+
+# Padrões de injeção de sistema a ignorar em mensagens de usuário
+_CODEX_SYSTEM_PREFIXES = (
+    "<environment_context",
+    "# AGENTS.md",
+    "<INSTRUCTIONS>",
+    "<AGENTS.MD",
+    "# Context from my IDE setup:",
+)
+
+
+def _codex_content_text(content: list) -> str:
+    """
+    Extrai e concatena texto de content items, ignorando injeções de sistema.
+    Retorna string vazia se não sobrar conteúdo real.
+    """
+    parts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        if any(text.startswith(prefix) for prefix in _CODEX_SYSTEM_PREFIXES):
+            continue
+        # Stripa cabeçalhos automáticos como "## My request for Codex:\n..."
+        # e usa apenas o conteúdo após o cabeçalho
+        if text.startswith("## My request for Codex:"):
+            rest = text[len("## My request for Codex:"):].strip()
+            if rest:
+                parts.append(rest)
+            continue
+        parts.append(text)
+    return "\n\n".join(parts)
+
+
+def parse_codex_session_jsonl(path: Path) -> list[ChatMessage]:
+    """
+    Parseia um arquivo .jsonl do Codex (~/.codex/sessions/<year>/<month>/<day>/<uuid>.jsonl).
+
+    Formato de cada linha:
+      {"timestamp": "<iso>", "type": "session_meta|response_item|event_msg|...", "payload": {...}}
+
+    Extrai:
+      - session_meta  → thread_id (UUID da sessão), workspace path
+      - response_item role=user      → mensagens reais do usuário (filtra injeções de sistema)
+      - response_item role=assistant → respostas do assistente
+    """
+    source = str(path)
+    thread_id: str | None = None
+    session_ts: str | None = None
+    workspace: str | None = None
+    messages: list[ChatMessage] = []
+
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception as exc:
+        _log.warning("Falha ao ler sessão Codex %s: %s", path, exc)
+        return []
+
+    for raw in lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+        event_type = event.get("type")
+        payload = event.get("payload") or {}
+        ts = event.get("timestamp")
+
+        if event_type == "session_meta":
+            thread_id = str(payload.get("id") or "")
+            session_ts = str(payload.get("timestamp") or ts or "")
+            workspace = str(payload.get("cwd") or "")
+            # Emite um marker de título com o path do workspace
+            if workspace and thread_id:
+                messages.append(
+                    ChatMessage(
+                        source="codex_session",
+                        session_id=thread_id,
+                        thread_id=thread_id,
+                        timestamp=session_ts or None,
+                        role="system",
+                        text=json.dumps(
+                            {"_type": "session_workspace", "cwd": workspace},
+                            ensure_ascii=False,
+                        ),
+                        workspace_hash=None,
+                        raw_source_file=source,
+                    )
+                )
+            continue
+
+        if event_type != "response_item":
+            continue
+
+        role = str(payload.get("role") or "")
+        content: list = payload.get("content") or []
+
+        if role == "user":
+            text = _codex_content_text(content)
+            if not text:
+                continue
+            messages.append(
+                ChatMessage(
+                    source="codex_session",
+                    session_id=thread_id or path.stem,
+                    thread_id=thread_id or path.stem,
+                    timestamp=ts or session_ts or None,
+                    role="user",
+                    text=text,
+                    workspace_hash=None,
+                    raw_source_file=source,
+                )
+            )
+
+        elif role == "assistant":
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "output_text":
+                    t = str(item.get("text") or "").strip()
+                    if t:
+                        parts.append(t)
+            text = "\n\n".join(parts)
+            if not text:
+                continue
+            messages.append(
+                ChatMessage(
+                    source="codex_session",
+                    session_id=thread_id or path.stem,
+                    thread_id=thread_id or path.stem,
+                    timestamp=ts or session_ts or None,
+                    role="assistant",
+                    text=text,
+                    workspace_hash=None,
+                    raw_source_file=source,
+                )
+            )
+
+    return messages
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher: keys.jsonl sidecar → chama parser correto por chave
 # ---------------------------------------------------------------------------
 

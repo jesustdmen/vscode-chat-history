@@ -48,6 +48,7 @@ from parsers import (
     parse_copilot_jsonl_file,
     parse_chat_session_json,
     parse_chat_session_jsonl,
+    parse_codex_session_jsonl,
 )
 from aggregator import build_summaries
 
@@ -125,7 +126,7 @@ def _remove_stale_shards(valid_keys: set[str]) -> int:
 def _collect_normalize_targets(snapshot_dir: Path) -> list[dict]:
     entries = _manifest_entries(snapshot_dir)
     targets: list[dict] = []
-    allowed_types = {"vscdb", "jsonl", "chat_session_json", "chat_session_jsonl"}
+    allowed_types = {"vscdb", "jsonl", "chat_session_json", "chat_session_jsonl", "codex_session"}
     for entry in entries:
         if entry.get("event") == "ingest_run":
             continue
@@ -177,6 +178,8 @@ def _parse_target(target: dict) -> list[ChatMessage]:
         return parse_chat_session_json(parse_path, ws_hash or "")
     if parse_type == "chat_session_jsonl":
         return parse_chat_session_jsonl(parse_path, ws_hash or "")
+    if parse_type == "codex_session":
+        return parse_codex_session_jsonl(parse_path)
     return []
 
 

@@ -24,7 +24,15 @@ if "APPDATA" not in os.environ:
 VSCODE_APPDATA: Path = Path(os.environ["APPDATA"]) / "Code"
 
 GLOBAL_STATE_DB: Path = VSCODE_APPDATA / "User" / "globalStorage" / "state.vscdb"
+EMPTY_WINDOW_CHAT_SESSIONS_DIR: Path = VSCODE_APPDATA / "User" / "globalStorage" / "emptyWindowChatSessions"
 WORKSPACE_STORAGE_DIR: Path = VSCODE_APPDATA / "User" / "workspaceStorage"
+
+# ---------------------------------------------------------------------------
+# Codex CLI / extensão openai.chatgpt — sessões em ~/.codex/sessions/
+# ---------------------------------------------------------------------------
+CODEX_SESSIONS_DIR: Path          = Path.home() / ".codex" / "sessions"
+CODEX_ARCHIVED_SESSIONS_DIR: Path = Path.home() / ".codex" / "archived_sessions"
+CODEX_SESSION_INDEX: Path         = Path.home() / ".codex" / "session_index.jsonl"
 
 # ---------------------------------------------------------------------------
 # Raiz do pipeline (destino de escrita)

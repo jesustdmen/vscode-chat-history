@@ -18,9 +18,33 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from pipeline.lib.config import CODEX_SESSION_INDEX
 from pipeline.lib.models import ChatMessage, SessionSummary
 
 _log = logging.getLogger(__name__)
+
+
+def _load_codex_thread_names() -> dict[str, str]:
+    """Carrega session_index.jsonl do Codex retornando {session_id: thread_name}."""
+    result: dict[str, str] = {}
+    if not CODEX_SESSION_INDEX.exists():
+        return result
+    try:
+        for line in CODEX_SESSION_INDEX.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+                sid = d.get("id", "")
+                name = (d.get("thread_name") or "").strip()
+                if sid and name:
+                    result[sid] = name  # última entrada vence (ordem crescente)
+            except json.JSONDecodeError:
+                pass
+    except OSError:
+        _log.warning("Não foi possível ler session_index.jsonl")
+    return result
 
 
 def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
@@ -33,6 +57,8 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
     - Mensagens system com _type='session_index' → título do índice
     Ambos os formatos usam JSON estruturado (sem regex frágil).
     """
+    codex_names = _load_codex_thread_names()
+
     groups: dict[tuple, list[ChatMessage]] = defaultdict(list)
     for m in all_messages:
         groups[(m.source, m.session_id, m.thread_id)].append(m)
@@ -46,22 +72,34 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
         for m in msgs:
             files_all.extend(m.files_changed)
 
-        # Extrai título a partir de mensagens system com JSON estruturado
-        title: str | None = None
-        for m in msgs:
-            if m.role != "system" or not m.text:
-                continue
-            try:
-                meta = json.loads(m.text)
-                t = meta.get("_type", "")
-                if t in ("thread_title", "session_index"):
-                    candidate = (meta.get("title") or "").strip()
-                    if candidate:
-                        title = candidate
+        # 0. Título AI-generated do Codex (session_index.jsonl) — máxima prioridade
+        title: str | None = codex_names.get(session_id) if session_id else None
+
+        # 1. Extrai título a partir de mensagens system com JSON estruturado
+        if not title:
+            for m in msgs:
+                if m.role != "system" or not m.text:
+                    continue
+                try:
+                    meta = json.loads(m.text)
+                    t = meta.get("_type", "")
+                    if t in ("thread_title", "session_index"):
+                        candidate = (meta.get("title") or "").strip()
+                        if candidate:
+                            title = candidate
+                            break
+                except (json.JSONDecodeError, AttributeError):
+                    # Mensagem system em formato legado (texto livre) — ignora
+                    pass
+
+        # Fallback: primeira mensagem do usuário como título
+        if not title:
+            for m in sorted(msgs, key=lambda x: x.timestamp or ""):
+                if m.role == "user" and m.text and m.text.strip():
+                    raw = m.text.strip().splitlines()[0].strip()
+                    if raw:
+                        title = raw[:80] + ("…" if len(raw) > 80 else "")
                         break
-            except (json.JSONDecodeError, AttributeError):
-                # Mensagem system em formato legado (texto livre) — ignora
-                pass
 
         user_turns      = sum(1 for m in msgs if m.role == "user")
         assistant_turns = sum(1 for m in msgs if m.role == "assistant")
