@@ -12,16 +12,55 @@ import logging
 import sys
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import unquote
 
 # Raiz do repositório — necessário para imports de pipeline.*
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from pipeline.lib.config import CODEX_SESSION_INDEX
+from pipeline.lib.config import CODEX_SESSION_INDEX, WORKSPACE_STORAGE_DIR
 from pipeline.lib.models import ChatMessage, SessionSummary
 
 _log = logging.getLogger(__name__)
+
+
+def _build_ws_path_to_hash() -> dict[str, str]:
+    """Mapa reverso: caminho_normalizado_lower → workspace_hash.
+
+    Lê workspace.json de cada workspaceStorage/<hash>/ e normaliza o path
+    da mesma forma que load_workspace_paths() no viewer (file:///... → C:\\...).
+    """
+    result: dict[str, str] = {}
+    if not WORKSPACE_STORAGE_DIR.exists():
+        return result
+    for d in WORKSPACE_STORAGE_DIR.iterdir():
+        if not d.is_dir():
+            continue
+        wf = d / "workspace.json"
+        if not wf.is_file():
+            continue
+        try:
+            data = json.loads(wf.read_text(encoding="utf-8"))
+            raw = data.get("folder") or data.get("workspace") or ""
+            if raw.startswith("file:///"):
+                raw = raw[8:]
+            path = unquote(raw).replace("/", "\\").strip("\\")
+            if len(path) >= 2 and path[1] == ":":
+                path = path[0].upper() + path[1:]
+            if path:
+                result[path.lower()] = d.name
+        except Exception:
+            pass
+    return result
+
+
+def _normalize_cwd(cwd: str) -> str:
+    """Normaliza um cwd do Codex para o mesmo formato dos paths do workspace.json."""
+    path = cwd.replace("/", "\\").strip("\\")
+    if len(path) >= 2 and path[1] == ":":
+        path = path[0].upper() + path[1:]
+    return path
 
 
 def _load_codex_thread_names() -> dict[str, str]:
@@ -58,6 +97,7 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
     Ambos os formatos usam JSON estruturado (sem regex frágil).
     """
     codex_names = _load_codex_thread_names()
+    ws_path_to_hash = _build_ws_path_to_hash()
 
     groups: dict[tuple, list[ChatMessage]] = defaultdict(list)
     for m in all_messages:
@@ -110,6 +150,22 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
             (m.workspace_hash for m in msgs if m.workspace_hash),
             session_id if len(session_id) == 32 else None,
         )
+
+        # Para sessões Codex, deriva workspace_hash via lookup cwd → workspaceStorage
+        if not ws_hash and source == "codex_session":
+            for m in msgs:
+                if m.role == "system" and m.text:
+                    try:
+                        meta = json.loads(m.text)
+                        if meta.get("_type") == "session_workspace":
+                            cwd = meta.get("cwd") or ""
+                            if cwd:
+                                normalized = _normalize_cwd(cwd)
+                                ws_hash = ws_path_to_hash.get(normalized.lower())
+                                if ws_hash:
+                                    break
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
 
         summaries.append(
             SessionSummary(

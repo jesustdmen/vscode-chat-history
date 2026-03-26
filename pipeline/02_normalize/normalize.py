@@ -50,12 +50,64 @@ from parsers import (
     parse_chat_session_jsonl,
     parse_codex_session_jsonl,
 )
-from aggregator import build_summaries
+from aggregator import build_summaries, _build_ws_path_to_hash, _normalize_cwd
 
 
 # ---------------------------------------------------------------------------
 # Utilitários
 # ---------------------------------------------------------------------------
+
+def _codex_workspace_fixup(
+    messages: list[ChatMessage], summaries: list[SessionSummary]
+) -> None:
+    """Preenche workspace_hash para sessões Codex cujo cwd ainda não foi resolvido.
+
+    Necessário porque shards reutilizados do cache não chamam build_summaries
+    novamente, portanto qualquer lógica nova no aggregator só afeta shards novos.
+    Este pós-passo roda sempre e corrige summaries na memória antes de escrever
+    summaries.jsonl.
+    """
+    ws_path_to_hash = _build_ws_path_to_hash()
+    if not ws_path_to_hash:
+        return
+
+    # Extrai cwd de mensagens system session_workspace por session_id
+    cwd_by_session: dict[str, str] = {}
+    for m in messages:
+        if (
+            m.source == "codex_session"
+            and m.role == "system"
+            and m.text
+            and m.session_id not in cwd_by_session
+        ):
+            try:
+                meta = json.loads(m.text)
+                if meta.get("_type") == "session_workspace":
+                    cwd = meta.get("cwd") or ""
+                    if cwd:
+                        cwd_by_session[m.session_id] = cwd
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+    if not cwd_by_session:
+        return
+
+    fixed = 0
+    for s in summaries:
+        if s.source != "codex_session" or s.workspace_hash:
+            continue
+        cwd = cwd_by_session.get(s.session_id or "") or ""
+        if not cwd:
+            continue
+        normalized = _normalize_cwd(cwd)
+        ws_hash = ws_path_to_hash.get(normalized.lower())
+        if ws_hash:
+            s.workspace_hash = ws_hash
+            fixed += 1
+
+    if fixed:
+        print(f"  [codex-ws-fixup] {fixed} sessão(ões) Codex vinculadas a workspace.")
+
 
 def _latest_snapshot(raw_dir: Path) -> Path | None:
     snapshots = sorted(raw_dir.glob("snapshot_*"), reverse=True)
@@ -248,6 +300,12 @@ def run_normalize(snapshot_dir: Path | None = None) -> tuple[Path, Path]:
         all_summaries.extend(shard_summaries)
 
     removed_shards = _remove_stale_shards(valid_keys)
+
+    # ------------------------------------------------------------------
+    # Pós-passo: preenche workspace_hash para sessões Codex via cwd lookup
+    # (necessário porque shards reutilizados não chamam build_summaries novamente)
+    # ------------------------------------------------------------------
+    _codex_workspace_fixup(all_messages, all_summaries)
 
     # ------------------------------------------------------------------
     # Gravar saídas
