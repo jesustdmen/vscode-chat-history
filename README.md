@@ -24,25 +24,25 @@ Ela funciona bem para o uso pretendido, mas ainda não está pronta para produç
 
 ## O que é
 
-O VS Code armazena o histórico de chat do Copilot (e outros assistentes de IA) em arquivos SQLite e JSONL dentro de `%APPDATA%\Code\User\`. Esta ferramenta:
+O VS Code armazena o histórico de chat do Copilot (e outros assistentes de IA) em arquivos SQLite e JSONL dentro de `%APPDATA%\Code\User\`. O Codex CLI armazena o seu próprio histórico em `~/.codex/sessions/`. Esta ferramenta:
 
-1. **Copia** esses arquivos para um snapshot local isolado
+1. **Copia** esses arquivos para um snapshot local isolado (processamento incremental — só reprocessa o que mudou)
 2. **Normaliza** os dados (reconstruindo patches incrementais de sessões ativas)
 3. **Expõe** um viewer Streamlit interativo para navegar, buscar e exportar conversas
 
 ```
-AppData do VS Code
-       │
-       ▼
+AppData do VS Code  +  ~/.codex/sessions/
+           │
+           ▼
  01_ingest   → snapshot somente-leitura + limpeza automática (mantém 2)
-       │
-       ▼
- 02_normalize → sessions.jsonl + summaries.jsonl
-       │
-       ▼
+           │
+           ▼
+ 02_normalize → sessions.jsonl + summaries.jsonl  (shards incrementais)
+           │
+           ▼
  03_report   → relatórios JSONL e texto
-       │
-       ▼
+           │
+           ▼
  viewer/app.py → http://localhost:8502
 ```
 
@@ -50,12 +50,17 @@ AppData do VS Code
 
 ## Funcionalidades
 
-- ✅ Lê 5 fontes distintas do VS Code: `chat_session_json`, `chat_session_jsonl`, `agent_sessions`, `chat_session_index`, `openai_chatgpt`
+- ✅ Lê **6 fontes distintas**: `chat_session_json`, `chat_session_jsonl`, `agent_sessions`, `chat_session_index`, `openai_chatgpt`, `codex_session`
+- ✅ Suporte a **sessões Codex CLI** — lê `~/.codex/sessions/` e `~/.codex/archived_sessions/` com títulos AI-generated do `session_index.jsonl`
+- ✅ Suporte a **sessões sem workspace** (`emptyWindowChatSessions`) — captura conversas abertas fora de qualquer pasta
 - ✅ Reconstrói sessões ativas (workspaces abertos) a partir de patches JSONL incrementais
-- ✅ Viewer Streamlit com 3 abas: **Conversa**, **Diário de Atividades**, **Workspaces**
+- ✅ Processamento **incremental**: ingest rastreia alterações por fingerprint; normalize reaprovita shards inalterados
+- ✅ Vincula sessões Codex ao workspace correto via lookup `cwd → workspaceStorage`
+- ✅ Viewer Streamlit com 4 abas: **Conversa**, **Diário de Atividades**, **Workspaces**, **Tags**
 - ✅ Toggle tema claro/escuro
 - ✅ Interface em 3 idiomas: 🇧🇷 Português, 🇺🇸 English, 🇪🇸 Español — seletor na sidebar
 - ✅ Badges coloridos por fonte · stat bar · busca com índice pré-computado
+- ✅ Tags personalizadas por workspace
 - ✅ Exportação JSON estruturada (schema v1.0) por sessão
 - ✅ Botão "📋 Copiar texto" e tool calls expansíveis por mensagem
 - ✅ Botão 🔄 para rodar o pipeline diretamente do viewer
@@ -132,10 +137,10 @@ vscode-chat-history/
 ├── pipeline/
 │   ├── run_pipeline.py      # Orquestrador: ingest → normalize → report
 │   ├── 01_ingest/
-│   │   └── ingest.py        # Cópia somente-leitura + limpeza automática de snapshots
+│   │   └── ingest.py        # Cópia somente-leitura (6 passos) + limpeza automática
 │   ├── 02_normalize/
-│   │   ├── normalize.py     # Orquestração (descobre fontes, emite sessions/summaries)
-│   │   ├── parsers.py       # Parsers por fonte (openai, agent, index, json, jsonl)
+│   │   ├── normalize.py     # Orquestração com shards incrementais
+│   │   ├── parsers.py       # Parsers por fonte (openai, agent, index, json, jsonl, codex)
 │   │   ├── aggregator.py    # build_summaries(): ChatMessage → SessionSummary
 │   │   └── patch.py         # Reconstrução de patches JSONL (kind 0/1/2)
 │   ├── 03_report/
@@ -144,12 +149,14 @@ vscode-chat-history/
 │   │   ├── config.py        # Caminhos e constantes (com validação de APPDATA)
 │   │   ├── models.py        # Dataclasses: ChatMessage + SessionSummary
 │   │   ├── db_reader.py     # Leitura somente-leitura de SQLite
+│   │   ├── incremental_state.py  # Rastreamento de fingerprint por arquivo
 │   │   └── patch.py         # Helpers de reconstrução de patches
 │   ├── viewer/
-│   │   └── app.py           # Interface Streamlit
+│   │   ├── app.py           # Interface Streamlit (4 abas)
+│   │   └── i18n.py          # Traduções PT-BR / EN-US / ES-ES
 │   └── output/              # ⚠️ Gerado — nunca versionar (ver .gitignore)
 │       ├── raw/             # Snapshots brutos (apenas 2 mantidos)
-│       ├── normalized/      # sessions.jsonl · summaries.jsonl
+│       ├── normalized/      # sessions.jsonl · summaries.jsonl · shards/
 │       └── reports/         # conversations · topics · tool_calls · timeline
 ├── _dev/                    # Arquivos locais pessoais — nunca versionados
 ├── pyproject.toml
@@ -166,7 +173,7 @@ vscode-chat-history/
 | Limitação | Detalhe |
 |---|---|
 | Somente Windows | Caminhos `%APPDATA%` e scripts `.ps1`; sem suporte testado para macOS/Linux |
-| Somente GitHub Copilot Chat | Outros assistentes (Continue, Codeium, etc.) não são parseados |
+| Copilot Chat + Codex CLI | Outros assistentes (Continue, Codeium, etc.) ainda não são parseados |
 | Sem autenticação | O viewer roda localmente sem senha — não expor em rede pública |
 | Sessões muito antigas | Algumas sessões pré-2025 podem não ter formato mapeado |
 
@@ -176,7 +183,7 @@ vscode-chat-history/
 
 - [ ] **PostgreSQL via Docker** — migrar para banco relacional com upsert
 - [ ] **`chatEditingSessions`** — histórico de edições de arquivo por sessão
-- [ ] **Suporte a outros assistentes** — parsers para Blackbox AI, Continue e outros
+- [ ] **Suporte a outros assistentes** — parsers para Continue, Codeium e outros
 
 ---
 
