@@ -9,6 +9,7 @@ Uso:
 from __future__ import annotations
 
 import html as _html
+import io
 import json
 import locale
 import os
@@ -16,6 +17,7 @@ import re
 import subprocess
 import sys
 import uuid
+import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -1238,6 +1240,144 @@ def tab_tags(tag_store: dict[str, object], workspaces: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tab 5 – Exportar
+# ---------------------------------------------------------------------------
+def tab_export(
+    sessions: dict[str, dict],
+    workspaces: list[dict],
+    ws_paths: dict[str, str],
+) -> None:
+    st.subheader(_t("export_title"))
+    st.caption(_t("export_caption"))
+
+    if not workspaces:
+        st.markdown(
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">🗂️</div>'
+            f'<div class="empty-state-text">{_t("no_workspaces")}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # ── workspace selector ──────────────────────────────────────────────────
+    ws_hashes = [w["hash"] for w in workspaces]
+    ws_labels = {
+        w["hash"]: (w["folder"] if w["folder"] not in ("—", "") else f"[{w['hash'][:12]}]")
+        for w in workspaces
+    }
+    ws_count = {w["hash"]: len(w["sessions"]) for w in workspaces}
+
+    sel_ws = st.selectbox(
+        _t("export_ws_label"),
+        ws_hashes,
+        format_func=lambda h: f"📁 {ws_labels.get(h, h[:16])}  ({ws_count.get(h, 0)})",
+        key="_export_ws_hash",
+    )
+
+    # clear checkbox state when workspace changes
+    prev_ws = st.session_state.get("_export_prev_ws_hash")
+    if sel_ws != prev_ws:
+        for k in [k for k in st.session_state if k.startswith("_export_cb_")]:
+            del st.session_state[k]
+        st.session_state["_export_prev_ws_hash"] = sel_ws
+
+    # ── sessions for the selected workspace ────────────────────────────────
+    ws_sessions = sorted(
+        [s for s in sessions.values() if s.get("workspace_hash") == sel_ws],
+        key=lambda s: s["last_ts"],
+        reverse=True,
+    )
+
+    if not ws_sessions:
+        st.info(_t("export_no_sessions"))
+        return
+
+    # ── date filter ─────────────────────────────────────────────────────────
+    from_col, to_col, _ = st.columns([1, 1, 2])
+    date_from_val = from_col.date_input(_t("date_from"), value=None, key="_export_from", format=_DATE_FMT)
+    date_to_val   = to_col.date_input(_t("date_to"),   value=None, key="_export_to",   format=_DATE_FMT)
+    date_from = date_from_val.isoformat() if date_from_val else None
+    date_to   = date_to_val.isoformat()   if date_to_val   else None
+
+    filtered = [
+        s for s in ws_sessions
+        if (not date_from or (s["date_label"] and s["date_label"] != "—" and s["date_label"] >= date_from))
+        and (not date_to   or (s["date_label"] and s["date_label"] != "—" and s["date_label"] <= date_to))
+    ]
+
+    if not filtered:
+        st.info(_t("export_no_sessions"))
+        return
+
+    st.caption(_t("export_available", n=len(filtered)))
+
+    # ── select all / deselect all ───────────────────────────────────────────
+    all_col, none_col, _ = st.columns([1.2, 1.5, 5])
+    if all_col.button(_t("export_select_all"), key="_export_btn_all"):
+        for s in filtered:
+            st.session_state[f"_export_cb_{s['thread_id']}"] = True
+        st.rerun()
+    if none_col.button(_t("export_deselect_all"), key="_export_btn_none"):
+        for s in filtered:
+            st.session_state[f"_export_cb_{s['thread_id']}"] = False
+        st.rerun()
+
+    # ── session list with checkboxes ────────────────────────────────────────
+    st.markdown("---")
+    selected_tids: list[str] = []
+    for s in filtered:
+        tid   = s["thread_id"]
+        dt    = _fmt_date_display(s["date_label"]) if s["date_label"] and s["date_label"] != "—" else "—"
+        title = _display_title(s["title"])
+        u, a  = s["user_turns"], s["assistant_turns"]
+
+        cb_col, lbl_col = st.columns([0.5, 9])
+        if cb_col.checkbox("", key=f"_export_cb_{tid}", value=st.session_state.get(f"_export_cb_{tid}", True)):
+            selected_tids.append(tid)
+        lbl_col.markdown(
+            f'<div style="padding:5px 0 2px 0">'
+            f'<span style="font-weight:600;font-size:.9rem">{_html.escape(title[:65])}</span>'
+            f' {_source_badge(s["source"])}'
+            f'<br><span style="font-size:.74rem;color:#888">'
+            f'📅 {_html.escape(dt)}'
+            f' &nbsp;·&nbsp; 💬 {u}U &nbsp;·&nbsp; 🤖 {a}A'
+            f'</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # ── count + export ──────────────────────────────────────────────────────
+    n_sel = len(selected_tids)
+    st.caption(_t("export_selected_count", n=n_sel, total=len(filtered)))
+
+    if n_sel == 0:
+        st.info(_t("export_none_selected"))
+        return
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for tid in selected_tids:
+            s       = sessions[tid]
+            payload = build_session_json(s)
+            safe    = _safe_filename(s["title"])
+            fname   = f"{s['date_label']}_{safe}.json"
+            zf.writestr(fname, json.dumps(payload, ensure_ascii=False, indent=2))
+    buf.seek(0)
+
+    ws_slug  = _safe_filename(ws_labels.get(sel_ws, sel_ws[:8]))[:30]
+    zip_name = f"export_{ws_slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    st.download_button(
+        label=_t("export_download_btn", n=n_sel),
+        data=buf.getvalue(),
+        file_name=zip_name,
+        mime="application/zip",
+        use_container_width=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # App principal
 # ---------------------------------------------------------------------------
 def main() -> None:
@@ -1406,7 +1546,7 @@ def main() -> None:
 
     view = st.radio(
         "view",
-        ["conversation", "diary", "workspaces", "tags"],
+        ["conversation", "diary", "workspaces", "tags", "export"],
         horizontal=True,
         key="active_view",
         label_visibility="collapsed",
@@ -1415,6 +1555,7 @@ def main() -> None:
             "diary": _t("tab_diary"),
             "workspaces": _t("tab_workspaces"),
             "tags": _t("tab_tags"),
+            "export": _t("tab_export"),
         }[value],
     )
 
@@ -1424,6 +1565,8 @@ def main() -> None:
         tab_workspaces(workspaces, tag_store, selected_tags)
     elif view == "tags":
         tab_tags(tag_store, workspaces)
+    elif view == "export":
+        tab_export(sessions, workspaces, ws_paths)
 
     elif selected_tid and selected_tid in sessions:
         session = sessions[selected_tid]

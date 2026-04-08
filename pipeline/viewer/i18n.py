@@ -110,6 +110,19 @@ TRANSLATIONS: dict[str, dict] = {
         "tags_usage":           "Usada em {n} workspace(s)",
         "tags_delete_btn":      "Excluir",
 
+        # Aba Exportar
+        "tab_export":               "📦 Exportar",
+        "export_title":             "Exportar Sessões",
+        "export_caption":           "Selecione um workspace, filtre por data, escolha as sessões e baixe um ZIP.",
+        "export_ws_label":          "Workspace",
+        "export_available":         "{n} sessão(ões) disponível(is) após filtro",
+        "export_select_all":        "✓ Selecionar todas",
+        "export_deselect_all":      "☐ Desmarcar todas",
+        "export_selected_count":    "{n} de {total} sessão(ões) selecionada(s)",
+        "export_none_selected":     "Selecione ao menos uma sessão para exportar.",
+        "export_no_sessions":       "Nenhuma sessão encontrada para os filtros aplicados.",
+        "export_download_btn":      "⬇️ Baixar ZIP com {n} sessão(ões)",
+
         # Estados gerais
         "no_data_error":        "Arquivo `sessions.jsonl` não encontrado em:\n`{path}`\n\nExecute o pipeline primeiro:\n```\npython pipeline/02_normalize/normalize.py\n```",
         "no_sessions_main":     "Nenhuma sessão disponível.<br>Execute o pipeline para carregar os dados.",
@@ -231,6 +244,19 @@ TRANSLATIONS: dict[str, dict] = {
         "tags_usage":           "Used in {n} workspace(s)",
         "tags_delete_btn":      "Delete",
 
+        # Export tab
+        "tab_export":               "📦 Export",
+        "export_title":             "Export Sessions",
+        "export_caption":           "Select a workspace, filter by date, pick sessions and download a ZIP.",
+        "export_ws_label":          "Workspace",
+        "export_available":         "{n} session(s) available after filter",
+        "export_select_all":        "✓ Select all",
+        "export_deselect_all":      "☐ Deselect all",
+        "export_selected_count":    "{n} of {total} session(s) selected",
+        "export_none_selected":     "Select at least one session to export.",
+        "export_no_sessions":       "No sessions found for the applied filters.",
+        "export_download_btn":      "⬇️ Download ZIP with {n} session(s)",
+
         # General states
         "no_data_error":        "File `sessions.jsonl` not found at:\n`{path}`\n\nRun the pipeline first:\n```\npython pipeline/02_normalize/normalize.py\n```",
         "no_sessions_main":     "No sessions available.<br>Run the pipeline to load data.",
@@ -351,6 +377,19 @@ TRANSLATIONS: dict[str, dict] = {
         "tags_count":           "{n} tag(s) creada(s).",
         "tags_usage":           "Usada en {n} workspace(s)",
         "tags_delete_btn":      "Eliminar",
+
+        # Pestaña Exportar
+        "tab_export":               "📦 Exportar",
+        "export_title":             "Exportar Sesiones",
+        "export_caption":           "Selecciona un workspace, filtra por fecha, elige sesiones y descarga un ZIP.",
+        "export_ws_label":          "Workspace",
+        "export_available":         "{n} sesión/sesiones disponible(s) tras filtro",
+        "export_select_all":        "✓ Seleccionar todas",
+        "export_deselect_all":      "☐ Deseleccionar todas",
+        "export_selected_count":    "{n} de {total} sesión/sesiones seleccionada(s)",
+        "export_none_selected":     "Selecciona al menos una sesión para exportar.",
+        "export_no_sessions":       "No se encontraron sesiones para los filtros aplicados.",
+        "export_download_btn":      "⬇️ Descargar ZIP con {n} sesión/sesiones",
 
         # General states
         "no_data_error":        "Archivo `sessions.jsonl` no encontrado en:\n`{path}`\n\nEjecuta el pipeline primero:\n```\npython pipeline/02_normalize/normalize.py\n```",
