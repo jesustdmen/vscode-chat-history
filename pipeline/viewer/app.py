@@ -712,21 +712,18 @@ _SCROLL_BTNS_JS = """<script>
     else   pw.scrollTo({top: toBottom ? pd.body.scrollHeight : 0, behavior:'smooth'});
   }
 
+  /* always reassign onclick (iframe reloads every rerun) */
   pd.getElementById('sf-top').onclick    = function(){ sfScroll(false); };
   pd.getElementById('sf-bottom').onclick = function(){ sfScroll(true);  };
 
-  function onScroll(){
-    var el=getEl();
-    var t = el ? el.scrollTop : (pw.pageYOffset||0);
-    var btn=pd.getElementById('sf-top');
-    if(btn) btn.style.display = t>180 ? 'flex' : 'none';
-  }
-
-  if(!pw._sfListeners){
-    pw._sfListeners = true;
-    var c=getEl();
-    if(c) c.addEventListener('scroll',onScroll,{passive:true});
-    pw.addEventListener('scroll',onScroll,{passive:true});
+  /* poll every 250 ms — avoids missing events when Streamlit swaps the container */
+  if(!pw._sfInterval){
+    pw._sfInterval = pw.setInterval(function(){
+      var el  = getEl();
+      var t   = el ? el.scrollTop : (pw.pageYOffset||0);
+      var btn = pd.getElementById('sf-top');
+      if(btn) btn.style.display = t > 180 ? 'flex' : 'none';
+    }, 250);
   }
 })();
 </script>"""
