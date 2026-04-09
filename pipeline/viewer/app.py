@@ -489,6 +489,11 @@ _CSS_COMMON = """
 .empty-state{text-align:center;padding:40px 20px;border-radius:8px;margin:20px 0}
 .empty-state-icon{font-size:2.5rem;margin-bottom:8px}
 .empty-state-text{font-size:.9rem}
+
+.sf-wrap{position:fixed;bottom:28px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.sf-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;font-size:.78rem;font-weight:800;display:flex;align-items:center;justify-content:center;opacity:.75;transition:opacity .2s,transform .15s,box-shadow .15s;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:all;line-height:1;user-select:none}
+.sf-btn:hover{opacity:1;transform:scale(1.12);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+#sf-top{display:none}
 </style>
 """
 
@@ -540,6 +545,7 @@ _CSS_DARK = """
 .diary-meta{color:#999}
 
 .empty-state{color:#666;border:1px dashed #3a3a5c}
+.sf-btn{background:#2d2d3e;color:#c4c4d4;border:1px solid #4a4a6a}
 </style>
 """
 
@@ -664,13 +670,56 @@ hr{border-color:#e2e8f0 !important}
 .diary-meta{color:#64748b}
 
 .empty-state{color:#94a3b8;border:1px dashed #cbd5e1}
+.sf-btn{background:#ffffff;color:#334155;border:1px solid #e2e8f0}
 </style>
+"""
+
+
+_SCROLL_BTNS_HTML = """
+<div style="height:0;overflow:visible;font-size:0;line-height:0">
+  <div class="sf-wrap">
+    <button class="sf-btn" id="sf-top" onclick="_sfTop()" title="Ir ao topo">▲</button>
+    <button class="sf-btn" id="sf-bottom" onclick="_sfBottom()" title="Ir ao final">▼</button>
+  </div>
+</div>
+<script>
+(function(){
+  function _getC(){
+    return document.querySelector('[data-testid="stMain"]') ||
+           document.querySelector('section.main') ||
+           document.documentElement;
+  }
+  window._sfTop = function(){
+    var c = _getC();
+    c.scrollTo ? c.scrollTo({top:0,behavior:'smooth'})
+               : window.scrollTo({top:0,behavior:'smooth'});
+  };
+  window._sfBottom = function(){
+    var c = _getC();
+    c.scrollTo ? c.scrollTo({top:c.scrollHeight,behavior:'smooth'})
+               : window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+  };
+  function _onScroll(){
+    var c  = _getC();
+    var t  = c === document.documentElement ? (window.pageYOffset||0) : c.scrollTop;
+    var el = document.getElementById('sf-top');
+    if(el) el.style.display = t > 180 ? 'flex' : 'none';
+  }
+  if(!window._sfInit){
+    window._sfInit = true;
+    var c = _getC();
+    if(c !== document.documentElement) c.addEventListener('scroll', _onScroll, {passive:true});
+    window.addEventListener('scroll', _onScroll, {passive:true});
+  }
+})();
+</script>
 """
 
 
 def _inject_css(theme: str = "dark") -> None:
     st.markdown(_CSS_COMMON, unsafe_allow_html=True)
     st.markdown(_CSS_DARK if theme == "dark" else _CSS_LIGHT, unsafe_allow_html=True)
+    st.markdown(_SCROLL_BTNS_HTML, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
