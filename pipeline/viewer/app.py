@@ -684,32 +684,73 @@ _SCROLL_BTNS_HTML = """
 </div>
 <script>
 (function(){
-  function _getC(){
-    return document.querySelector('[data-testid="stMain"]') ||
-           document.querySelector('section.main') ||
-           document.documentElement;
+  /* Selectors ordered by Streamlit version likelihood */
+  var _SF_SELS = [
+    '[data-testid="stMainBlockContainer"]',
+    '[data-testid="stMain"]',
+    'section.main',
+    '.main',
+    '[data-testid="block-scrolling-inner"]'
+  ];
+
+  function _scrollEl(goBottom){
+    /* try each candidate: pick the first one that is actually scrollable */
+    for(var i=0;i<_SF_SELS.length;i++){
+      var el=document.querySelector(_SF_SELS[i]);
+      if(el && el.scrollHeight > el.clientHeight + 4){
+        el.scrollTo({top: goBottom ? el.scrollHeight : 0, behavior:'smooth'});
+        return;
+      }
+    }
+    /* fallback: scroll the window itself */
+    window.scrollTo({top: goBottom ? document.body.scrollHeight : 0, behavior:'smooth'});
   }
-  window._sfTop = function(){
-    var c = _getC();
-    c.scrollTo ? c.scrollTo({top:0,behavior:'smooth'})
-               : window.scrollTo({top:0,behavior:'smooth'});
-  };
-  window._sfBottom = function(){
-    var c = _getC();
-    c.scrollTo ? c.scrollTo({top:c.scrollHeight,behavior:'smooth'})
-               : window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
-  };
+
+  window._sfTop    = function(){ _scrollEl(false); };
+  window._sfBottom = function(){ _scrollEl(true);  };
+
+  function _scrollPos(){
+    for(var i=0;i<_SF_SELS.length;i++){
+      var el=document.querySelector(_SF_SELS[i]);
+      if(el && el.scrollHeight > el.clientHeight + 4) return el.scrollTop;
+    }
+    return window.pageYOffset||window.scrollY||0;
+  }
+
   function _onScroll(){
-    var c  = _getC();
-    var t  = c === document.documentElement ? (window.pageYOffset||0) : c.scrollTop;
-    var el = document.getElementById('sf-top');
-    if(el) el.style.display = t > 180 ? 'flex' : 'none';
+    var topBtn=document.getElementById('sf-top');
+    if(topBtn) topBtn.style.display = _scrollPos() > 180 ? 'flex' : 'none';
   }
-  if(!window._sfInit){
+
+  function _attachListeners(){
+    for(var i=0;i<_SF_SELS.length;i++){
+      var el=document.querySelector(_SF_SELS[i]);
+      if(el && el.scrollHeight > el.clientHeight + 4){
+        el.addEventListener('scroll',_onScroll,{passive:true});
+      }
+    }
+    window.addEventListener('scroll',_onScroll,{passive:true});
+  }
+
+  /* re-attach every Streamlit rerun (the DOM may be replaced) */
+  window._sfInit = false;
+  function _init(){
+    if(window._sfInit) return;
     window._sfInit = true;
-    var c = _getC();
-    if(c !== document.documentElement) c.addEventListener('scroll', _onScroll, {passive:true});
-    window.addEventListener('scroll', _onScroll, {passive:true});
+    _attachListeners();
+    /* watch for Streamlit rerenders and reattach */
+    if(window.MutationObserver){
+      var mo=new MutationObserver(function(){
+        window._sfInit=false; _init();
+      });
+      var root=document.querySelector('[data-testid="stApp"]')||document.body;
+      mo.observe(root,{childList:true,subtree:false});
+    }
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',_init);
+  } else {
+    _init();
   }
 })();
 </script>
