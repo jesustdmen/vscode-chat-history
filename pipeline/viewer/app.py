@@ -11,6 +11,7 @@ from __future__ import annotations
 import html as _html
 import io
 import json
+import streamlit.components.v1 as _stc
 import locale
 import os
 import re
@@ -675,92 +676,66 @@ hr{border-color:#e2e8f0 !important}
 """
 
 
-_SCROLL_BTNS_HTML = """
-<div style="height:0;overflow:visible;font-size:0;line-height:0">
-  <div class="sf-wrap">
-    <button class="sf-btn" id="sf-top" onclick="_sfTop()" title="Ir ao topo">▲</button>
-    <button class="sf-btn" id="sf-bottom" onclick="_sfBottom()" title="Ir ao final">▼</button>
-  </div>
-</div>
-<script>
+_SCROLL_BTNS_JS = """<script>
 (function(){
-  /* Selectors ordered by Streamlit version likelihood */
-  var _SF_SELS = [
+  var pw = window.parent, pd = pw.document;
+
+  /* ── inject buttons into parent document once ── */
+  if(!pd.getElementById('sf-wrap')){
+    var wrap = pd.createElement('div');
+    wrap.id = 'sf-wrap';
+    wrap.className = 'sf-wrap';
+    wrap.innerHTML =
+      '<button class="sf-btn" id="sf-top" style="display:none" title="Ir ao topo">&#9650;</button>' +
+      '<button class="sf-btn" id="sf-bottom" title="Ir ao final">&#9660;</button>';
+    pd.body.appendChild(wrap);
+  }
+
+  var SELS = [
     '[data-testid="stMainBlockContainer"]',
     '[data-testid="stMain"]',
     'section.main',
-    '.main',
-    '[data-testid="block-scrolling-inner"]'
+    '.main'
   ];
 
-  function _scrollEl(goBottom){
-    /* try each candidate: pick the first one that is actually scrollable */
-    for(var i=0;i<_SF_SELS.length;i++){
-      var el=document.querySelector(_SF_SELS[i]);
-      if(el && el.scrollHeight > el.clientHeight + 4){
-        el.scrollTo({top: goBottom ? el.scrollHeight : 0, behavior:'smooth'});
-        return;
-      }
+  function getEl(){
+    for(var i=0;i<SELS.length;i++){
+      var el=pd.querySelector(SELS[i]);
+      if(el && el.scrollHeight > el.clientHeight+4) return el;
     }
-    /* fallback: scroll the window itself */
-    window.scrollTo({top: goBottom ? document.body.scrollHeight : 0, behavior:'smooth'});
+    return null;
   }
 
-  window._sfTop    = function(){ _scrollEl(false); };
-  window._sfBottom = function(){ _scrollEl(true);  };
-
-  function _scrollPos(){
-    for(var i=0;i<_SF_SELS.length;i++){
-      var el=document.querySelector(_SF_SELS[i]);
-      if(el && el.scrollHeight > el.clientHeight + 4) return el.scrollTop;
-    }
-    return window.pageYOffset||window.scrollY||0;
+  function sfScroll(toBottom){
+    var el=getEl();
+    if(el) el.scrollTo({top: toBottom ? el.scrollHeight : 0, behavior:'smooth'});
+    else   pw.scrollTo({top: toBottom ? pd.body.scrollHeight : 0, behavior:'smooth'});
   }
 
-  function _onScroll(){
-    var topBtn=document.getElementById('sf-top');
-    if(topBtn) topBtn.style.display = _scrollPos() > 180 ? 'flex' : 'none';
+  pd.getElementById('sf-top').onclick    = function(){ sfScroll(false); };
+  pd.getElementById('sf-bottom').onclick = function(){ sfScroll(true);  };
+
+  function onScroll(){
+    var el=getEl();
+    var t = el ? el.scrollTop : (pw.pageYOffset||0);
+    var btn=pd.getElementById('sf-top');
+    if(btn) btn.style.display = t>180 ? 'flex' : 'none';
   }
 
-  function _attachListeners(){
-    for(var i=0;i<_SF_SELS.length;i++){
-      var el=document.querySelector(_SF_SELS[i]);
-      if(el && el.scrollHeight > el.clientHeight + 4){
-        el.addEventListener('scroll',_onScroll,{passive:true});
-      }
-    }
-    window.addEventListener('scroll',_onScroll,{passive:true});
-  }
-
-  /* re-attach every Streamlit rerun (the DOM may be replaced) */
-  window._sfInit = false;
-  function _init(){
-    if(window._sfInit) return;
-    window._sfInit = true;
-    _attachListeners();
-    /* watch for Streamlit rerenders and reattach */
-    if(window.MutationObserver){
-      var mo=new MutationObserver(function(){
-        window._sfInit=false; _init();
-      });
-      var root=document.querySelector('[data-testid="stApp"]')||document.body;
-      mo.observe(root,{childList:true,subtree:false});
-    }
-  }
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded',_init);
-  } else {
-    _init();
+  if(!pw._sfListeners){
+    pw._sfListeners = true;
+    var c=getEl();
+    if(c) c.addEventListener('scroll',onScroll,{passive:true});
+    pw.addEventListener('scroll',onScroll,{passive:true});
   }
 })();
-</script>
-"""
+</script>"""
 
 
 def _inject_css(theme: str = "dark") -> None:
     st.markdown(_CSS_COMMON, unsafe_allow_html=True)
     st.markdown(_CSS_DARK if theme == "dark" else _CSS_LIGHT, unsafe_allow_html=True)
-    st.markdown(_SCROLL_BTNS_HTML, unsafe_allow_html=True)
+    _stc.html(_SCROLL_BTNS_JS, height=0, scrolling=False)
 
 
 # ---------------------------------------------------------------------------
