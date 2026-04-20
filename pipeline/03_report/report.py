@@ -250,10 +250,10 @@ def run_report(
     tool_path   = _report_tool_calls(messages, OUTPUT_REPORTS)
     tl_path     = _report_timeline(messages, OUTPUT_REPORTS)
 
-    print(f"\n  conversations_by_thread.jsonl → {conv_path}")
-    print(f"  topics_summary.txt            → {topics_path}")
-    print(f"  tool_calls.jsonl              → {tool_path}")
-    print(f"  timeline.jsonl                → {tl_path}")
+    print(f"\n  conversations_by_thread.jsonl -> {conv_path}")
+    print(f"  topics_summary.txt            -> {topics_path}")
+    print(f"  tool_calls.jsonl              -> {tool_path}")
+    print(f"  timeline.jsonl                -> {tl_path}")
     print(f"{'='*60}\n")
 
     return {

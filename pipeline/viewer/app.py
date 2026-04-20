@@ -242,7 +242,8 @@ def _to_brt(ts_iso: str | None) -> str | None:
 # Carregamento de dados (cache)
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner=True)
-def load_data() -> tuple[list[dict], list[dict]]:
+def load_data(sessions_mtime: float, summaries_mtime: float) -> tuple[list[dict], list[dict]]:
+    """Cache key inclui mtime dos arquivos — invalida automaticamente quando o pipeline atualiza."""
     def read_jsonl(path: Path) -> list[dict]:
         out = []
         with path.open("r", encoding="utf-8") as fh:
@@ -1470,7 +1471,9 @@ def main() -> None:
         st.error(_t("no_data_error", path=_SESSIONS_FILE))
         st.stop()
 
-    messages, summaries = load_data()
+    _s_mtime = _SESSIONS_FILE.stat().st_mtime if _SESSIONS_FILE.exists() else 0.0
+    _m_mtime = _SUMMARIES_FILE.stat().st_mtime if _SUMMARIES_FILE.exists() else 0.0
+    messages, summaries = load_data(_s_mtime, _m_mtime)
     tag_store      = load_tag_store()
     workspace_tags = tag_store.get("workspace_tags", {})
     if not isinstance(workspace_tags, dict):
