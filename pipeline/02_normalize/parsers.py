@@ -480,7 +480,14 @@ def parse_chat_session_obj(
         if not isinstance(req, dict):
             continue
 
-        ts = _ms_to_iso(req.get("timestamp")) or creation_ts
+        # ts_user: quando o usuário enviou a mensagem
+        # ts_resp: quando o assistente terminou de responder (modelState.completedAt)
+        # Usar timestamps separados corrige sessões com Restore Checkpoint, onde a
+        # resposta é gerada muito depois da mensagem original (novo dia/horário).
+        ts_user = _ms_to_iso(req.get("timestamp")) or creation_ts
+        _model_state = req.get("modelState") or {}
+        _completed_at = _model_state.get("completedAt") if isinstance(_model_state, dict) else None
+        ts_resp = _ms_to_iso(_completed_at) or ts_user
 
         # Mensagem do usuário
         msg = req.get("message") or {}
@@ -497,7 +504,7 @@ def parse_chat_session_obj(
                     source=source_label,
                     session_id=session_id,
                     thread_id=session_id,
-                    timestamp=ts,
+                    timestamp=ts_user,
                     role="user",
                     text=user_text,
                     workspace_hash=_ws,
@@ -520,7 +527,7 @@ def parse_chat_session_obj(
                     source=source_label,
                     session_id=session_id,
                     thread_id=session_id,
-                    timestamp=ts,
+                    timestamp=ts_resp,
                     role="assistant",
                     text=resp_text,
                     files_changed=files_changed,
@@ -536,7 +543,7 @@ def parse_chat_session_obj(
                         source=source_label,
                         session_id=session_id,
                         thread_id=session_id,
-                        timestamp=ts,
+                        timestamp=ts_resp,
                         role="tool",
                         text=tc.get("result_summary") or "",
                         tool=tc.get("name"),
