@@ -371,9 +371,18 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
     def _make(s: dict, src: str) -> dict:
         tid        = s.get("thread_id") or s.get("session_id") or ""
         title      = (s.get("title") or "").strip() or "__NO_TITLE__"
+        _ts_min = datetime.min.replace(tzinfo=timezone.utc)
+        def _sort_key(m: dict) -> datetime:
+            ts = m.get("timestamp")
+            if not ts:
+                return _ts_min
+            try:
+                return _to_utc_aware(ts)
+            except Exception:
+                return _ts_min
         msgs = sorted(
             [m for m in by_thread.get(tid, []) if m.get("role") != "system"],
-            key=lambda m: m.get("timestamp") or "",
+            key=_sort_key,
         )
         first_ts   = s.get("first_ts") or next((m.get("timestamp") or "" for m in msgs if m.get("timestamp")), "")
         last_ts    = s.get("last_ts") or ""
@@ -833,20 +842,20 @@ def render_message(m: dict) -> None:
     if role == "user":
         html_content = _md_to_html(text, nl2br=True)
         st.markdown(
-            f'<div class="msg-role msg-role-right">{_t("role_user")} · {_html.escape(ts)}</div>',
+            f'<div class="msg-role msg-role-right">{_t("role_user")} · {_html.escape(ts)}</div>'
+            f'<div class="msg-user">{html_content}</div>',
             unsafe_allow_html=True,
         )
-        st.markdown(f'<div class="msg-user">{html_content}</div>', unsafe_allow_html=True)
         with st.expander(_t("copy_text"), expanded=False):
             st.code(text, language=None)
 
     elif role == "assistant":
         html_content = _md_to_html(text, nl2br=False)
         st.markdown(
-            f'<div class="msg-role">{_t("role_assistant")} · {_html.escape(ts)}</div>',
+            f'<div class="msg-role">{_t("role_assistant")} · {_html.escape(ts)}</div>'
+            f'<div class="msg-assistant">{html_content}</div>',
             unsafe_allow_html=True,
         )
-        st.markdown(f'<div class="msg-assistant">{html_content}</div>', unsafe_allow_html=True)
         with st.expander(_t("copy_text"), expanded=False):
             st.code(text, language=None)
 
