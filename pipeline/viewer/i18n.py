@@ -35,6 +35,7 @@ TRANSLATIONS: dict[str, dict] = {
         # Tabs
         "tab_conversation":     "💬 Conversa",
         "tab_diary":            "📅 Diário de Atividades",
+        "tab_timeline":         "🕐 Timeline",
         "tab_workspaces":       "🗂️ Workspaces",
         "tab_tags":             "🏷️ Tags",
 
@@ -69,6 +70,15 @@ TRANSLATIONS: dict[str, dict] = {
         # Tab Diário
         "diary_title":          "Diário de Atividades",
         "diary_caption":        "Sessões agrupadas por dia — ideal para documentar o que foi feito.",
+
+        # Tab Timeline
+        "timeline_title":       "Timeline do Dia",
+        "timeline_caption":     "Todas as mensagens de um dia específico, agrupadas por conversa.",
+        "timeline_select_date": "Selecionar data",
+        "timeline_prev_day":    "Anterior",
+        "timeline_next_day":    "Próximo",
+        "timeline_empty":       "Nenhuma mensagem encontrada para este dia.",
+        "timeline_summary":     "{sessions} conversa(s) · {msgs} mensagem(ns)",
         "diary_search":         "🔍 Buscar por título ou thread ID",
         "date_from":            "De:",
         "date_to":              "Até:",
@@ -169,6 +179,7 @@ TRANSLATIONS: dict[str, dict] = {
         # Tabs
         "tab_conversation":     "💬 Conversation",
         "tab_diary":            "📅 Activity Log",
+        "tab_timeline":         "🕐 Timeline",
         "tab_workspaces":       "🗂️ Workspaces",
         "tab_tags":             "🏷️ Tags",
 
@@ -203,6 +214,15 @@ TRANSLATIONS: dict[str, dict] = {
         # Activity Log tab
         "diary_title":          "Activity Log",
         "diary_caption":        "Sessions grouped by day — great for reviewing what you worked on.",
+
+        # Timeline tab
+        "timeline_title":       "Day Timeline",
+        "timeline_caption":     "All messages from a specific day, grouped by conversation.",
+        "timeline_select_date": "Select date",
+        "timeline_prev_day":    "Previous",
+        "timeline_next_day":    "Next",
+        "timeline_empty":       "No messages found for this day.",
+        "timeline_summary":     "{sessions} conversation(s) · {msgs} message(s)",
         "diary_search":         "🔍 Search by title or thread ID",
         "date_from":            "From:",
         "date_to":              "To:",
@@ -303,6 +323,7 @@ TRANSLATIONS: dict[str, dict] = {
         # Tabs
         "tab_conversation":     "💬 Conversación",
         "tab_diary":            "📅 Diario de Actividad",
+        "tab_timeline":         "🕐 Timeline",
         "tab_workspaces":       "🗂️ Espacios de trabajo",
         "tab_tags":             "🏷️ Tags",
 
@@ -337,6 +358,15 @@ TRANSLATIONS: dict[str, dict] = {
         # Diario tab
         "diary_title":          "Diario de Actividad",
         "diary_caption":        "Sesiones agrupadas por día — ideal para documentar lo que se hizo.",
+
+        # Pestaña Timeline
+        "timeline_title":       "Timeline del Día",
+        "timeline_caption":     "Todos los mensajes de un día específico, agrupados por conversación.",
+        "timeline_select_date": "Seleccionar fecha",
+        "timeline_prev_day":    "Anterior",
+        "timeline_next_day":    "Siguiente",
+        "timeline_empty":       "No se encontraron mensajes para este día.",
+        "timeline_summary":     "{sessions} conversación/conversaciones · {msgs} mensaje(s)",
         "diary_search":         "🔍 Buscar por título o thread ID",
         "date_from":            "Desde:",
         "date_to":              "Hasta:",

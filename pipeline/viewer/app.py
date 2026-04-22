@@ -1115,6 +1115,123 @@ def tab_diario(sessions: dict[str, dict], selected_tags: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tab: Timeline — mensagens de um dia específico, cruzando todas as sessões
+# ---------------------------------------------------------------------------
+def tab_timeline(sessions: dict[str, dict], ws_paths: dict[str, str] | None = None) -> None:
+    from datetime import date as _date, timedelta as _td
+
+    st.subheader(_t("timeline_title"))
+    st.caption(_t("timeline_caption"))
+
+    # ── date navigation ────────────────────────────────────────────────────
+    if "_tl_date" not in st.session_state:
+        st.session_state["_tl_date"] = _date.today()
+
+    prev_col, date_col, next_col = st.columns([1, 3, 1])
+    if prev_col.button("◀ " + _t("timeline_prev_day"), key="_tl_prev", use_container_width=True):
+        st.session_state["_tl_date"] -= _td(days=1)
+        st.rerun()
+    if next_col.button(_t("timeline_next_day") + " ▶", key="_tl_next", use_container_width=True):
+        st.session_state["_tl_date"] += _td(days=1)
+        st.rerun()
+
+    sel_date_val = date_col.date_input(
+        _t("timeline_select_date"),
+        value=st.session_state["_tl_date"],
+        key="_tl_date_input",
+        format=_DATE_FMT,
+        label_visibility="collapsed",
+    )
+    if sel_date_val != st.session_state["_tl_date"]:
+        st.session_state["_tl_date"] = sel_date_val
+        st.rerun()
+
+    sel_date_iso = st.session_state["_tl_date"].isoformat()
+    show_tools = st.checkbox(_t("show_tool_calls"), value=False, key="_tl_show_tools")
+
+    # ── collect messages for the selected day ──────────────────────────────
+    sessions_for_day: list[tuple[dict, list[dict]]] = []
+    for s in sessions.values():
+        day_msgs = [
+            m for m in s["messages"]
+            if m.get("role") in ("user", "assistant", "tool")
+            and (show_tools or m.get("role") != "tool")
+            and ts_to_date_brt(m.get("timestamp")) == sel_date_iso
+        ]
+        if not day_msgs:
+            continue
+        day_msgs.sort(key=lambda m: (
+            _to_utc_aware(m["timestamp"]) if m.get("timestamp") else datetime.min.replace(tzinfo=timezone.utc)
+        ))
+        sessions_for_day.append((s, day_msgs))
+
+    sessions_for_day.sort(key=lambda t: (
+        _to_utc_aware(t[1][0]["timestamp"]) if t[1][0].get("timestamp") else datetime.min.replace(tzinfo=timezone.utc)
+    ))
+
+    # ── format day header label ────────────────────────────────────────────
+    try:
+        day_dt    = datetime.fromisoformat(sel_date_iso)
+        lang      = st.session_state.get("lang", "pt-BR")
+        wk_map    = TRANSLATIONS[lang]["weekdays"]
+        day_label = f"{wk_map.get(day_dt.strftime('%A'), day_dt.strftime('%A'))}, {day_dt.strftime('%d/%m/%Y')}"
+    except Exception:
+        day_label = sel_date_iso
+
+    if not sessions_for_day:
+        st.markdown(f"**📅 {day_label}**")
+        st.markdown(
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">📭</div>'
+            f'<div class="empty-state-text">{_t("timeline_empty")}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    total_msgs = sum(len(ms) for _, ms in sessions_for_day)
+    st.markdown(f"**📅 {day_label}**")
+    st.caption(_t("timeline_summary", sessions=len(sessions_for_day), msgs=total_msgs))
+
+    st.divider()
+
+    for s, day_msgs in sessions_for_day:
+        tid      = s["thread_id"]
+        title    = _display_title(s["title"])
+        ws_hash  = s.get("workspace_hash")
+        ws_folder = ""
+        if ws_paths and ws_hash:
+            raw_path = ws_paths.get(ws_hash, "")
+            ws_folder = Path(raw_path).name if raw_path else ""
+
+        u_count = sum(1 for m in day_msgs if m.get("role") == "user")
+        a_count = sum(1 for m in day_msgs if m.get("role") == "assistant")
+        t_count = sum(1 for m in day_msgs if m.get("role") == "tool")
+
+        hdr_col, btn_col = st.columns([11, 1])
+        hdr_col.markdown(
+            f'<div class="day-header" style="font-size:.9rem;padding:6px 10px">'
+            f'💬 <span style="font-weight:700">{_html.escape(title[:70])}</span>'
+            f' {_source_badge(s["source"])}'
+            f'<br><span style="font-weight:400;color:#aaa;font-size:.78rem;">'
+            + (f'📁 {_html.escape(ws_folder)} &nbsp;·&nbsp; ' if ws_folder else '')
+            + f'{u_count}U · {a_count}A'
+            + (f' · {t_count}🔧' if t_count else '')
+            + f'</span></div>',
+            unsafe_allow_html=True,
+        )
+        if btn_col.button("↗", key=f"tl_goto_{tid}", help=_t("goto_conversation")):
+            st.session_state["_pending_tid"]   = tid
+            st.session_state["_goto_conversa"] = True
+            st.rerun()
+
+        for m in day_msgs:
+            render_message(m)
+
+        st.divider()
+
+
+# ---------------------------------------------------------------------------
 # Tab 3: Workspaces
 # ---------------------------------------------------------------------------
 def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selected_tags: list[str]) -> None:
@@ -1620,13 +1737,14 @@ def main() -> None:
 
     view = st.radio(
         "view",
-        ["conversation", "diary", "workspaces", "tags", "export"],
+        ["conversation", "diary", "timeline", "workspaces", "tags", "export"],
         horizontal=True,
         key="active_view",
         label_visibility="collapsed",
         format_func=lambda value: {
             "conversation": _t("tab_conversation"),
             "diary": _t("tab_diary"),
+            "timeline": _t("tab_timeline"),
             "workspaces": _t("tab_workspaces"),
             "tags": _t("tab_tags"),
             "export": _t("tab_export"),
@@ -1635,6 +1753,8 @@ def main() -> None:
 
     if view == "diary":
         tab_diario(sessions, selected_tags)
+    elif view == "timeline":
+        tab_timeline(sessions, ws_paths)
     elif view == "workspaces":
         tab_workspaces(workspaces, tag_store, selected_tags)
     elif view == "tags":
