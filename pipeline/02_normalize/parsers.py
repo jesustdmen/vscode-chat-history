@@ -361,11 +361,13 @@ def extract_response_text(response_parts: list) -> str:
 
     Hierarquia de extração:
     - kind=None / kind='unknown'  → texto principal da resposta
+    - kind='inlineReference'      → referência de arquivo inline (nome do arquivo)
     - kind='thinking' + generatedTitle → fallback para agentes MCP/codex
     - kind='questionCarousel'     → Gemini: lista de opções
     """
     parts_text: list[str] = []
     thinking_fallback: list[str] = []
+    _pending_ref: str | None = None  # filename waiting to be inlined
 
     for part in response_parts:
         if not isinstance(part, dict):
@@ -374,7 +376,40 @@ def extract_response_text(response_parts: list) -> str:
         value = part.get("value")
 
         if (not kind or kind == "unknown") and isinstance(value, str) and value.strip():
-            parts_text.append(value)
+            if _pending_ref is not None:
+                # A reference was pending — decide inline vs. new paragraph
+                if value[:1] in (" ", "\t", ",", ".", ":", ";", ")", "!", "?", "'", "\u2019", "|", "\n"):
+                    # Continuation: attach ref+value inline to the previous segment
+                    if parts_text:
+                        parts_text[-1] = parts_text[-1] + _pending_ref + value
+                    else:
+                        parts_text.append(_pending_ref + value)
+                else:
+                    # New paragraph: flush ref into previous segment, then start new
+                    if parts_text:
+                        parts_text[-1] = parts_text[-1] + _pending_ref
+                    parts_text.append(value)
+                _pending_ref = None
+            elif parts_text and value[:1] in (" ", "\t"):
+                # This text continues the previous paragraph inline (no ref in between)
+                parts_text[-1] = parts_text[-1] + value
+            else:
+                parts_text.append(value)
+
+        elif kind == "inlineReference":
+            ref = part.get("inlineReference") or {}
+            # VS Code URI can be a flat dict or have a nested 'uri' sub-object
+            path_str: str = (
+                ref.get("fsPath")
+                or ref.get("path")
+                or (ref.get("uri") or {}).get("fsPath")
+                or (ref.get("uri") or {}).get("path")
+                or ""
+            )
+            if isinstance(path_str, str) and path_str:
+                fname = Path(path_str).name
+                if fname:
+                    _pending_ref = (_pending_ref or "") + fname
 
         elif (
             kind == "thinking"
@@ -397,6 +432,10 @@ def extract_response_text(response_parts: list) -> str:
                         carousel_parts.append(f"- {text.strip()}")
             if carousel_parts:
                 parts_text.append("\n".join(carousel_parts))
+
+    # Flush any trailing ref that wasn't followed by a text part
+    if _pending_ref is not None and parts_text:
+        parts_text[-1] = parts_text[-1] + _pending_ref
 
     if parts_text:
         return "\n\n".join(parts_text).strip()
