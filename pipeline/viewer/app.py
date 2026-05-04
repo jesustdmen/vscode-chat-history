@@ -422,6 +422,13 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
         if tid and tid not in sessions:
             sessions[tid] = _make(s, "chat_session_index")
 
+    for s in summaries:
+        if s.get("source") != "agent_sessions":
+            continue
+        tid = s.get("thread_id") or s.get("session_id") or ""
+        if tid and tid not in sessions:
+            sessions[tid] = _make(s, "agent_sessions")
+
     return sessions
 
 

@@ -364,7 +364,38 @@ def extract_response_text(response_parts: list) -> str:
     - kind='inlineReference'      → referência de arquivo inline (nome do arquivo)
     - kind='thinking' + generatedTitle → fallback para agentes MCP/codex
     - kind='questionCarousel'     → Gemini: lista de opções
+
+    Pre-processing: removes incremental-patch duplicates where a text part is a
+    strict prefix of the immediately following text part (VS Code streams tokens
+    via kind=2 patches so partial snapshots accumulate in the list).
     """
+    # De-dup consecutive text parts that are strict prefixes of the next one
+    deduped: list = []
+    for i, part in enumerate(response_parts):
+        if not isinstance(part, dict):
+            deduped.append(part)
+            continue
+        kind = part.get("kind")
+        if not kind or kind == "unknown":
+            val = part.get("value") or ""
+            # Look ahead: if the next text part starts with the same content, skip this one
+            next_val: str | None = None
+            for j in range(i + 1, len(response_parts)):
+                nxt = response_parts[j]
+                if not isinstance(nxt, dict):
+                    continue
+                nkind = nxt.get("kind")
+                if not nkind or nkind == "unknown":
+                    next_val = nxt.get("value") or ""
+                    break
+                # If a non-text part intervenes, don't skip
+                break
+            if next_val is not None and isinstance(val, str) and isinstance(next_val, str):
+                if next_val.startswith(val) and val != next_val:
+                    continue  # skip this truncated duplicate
+        deduped.append(part)
+    response_parts = deduped
+
     parts_text: list[str] = []
     thinking_fallback: list[str] = []
     _pending_ref: str | None = None  # filename waiting to be inlined
