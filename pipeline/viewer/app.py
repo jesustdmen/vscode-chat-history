@@ -108,7 +108,6 @@ def _open_conversation(thread_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Markdown helper
 # ---------------------------------------------------------------------------
-@st.cache_data(show_spinner=False)
 def _md_to_html(text: str, nl2br: bool = False) -> str:
     exts = ["tables", "fenced_code", "sane_lists"]
     if nl2br:
@@ -1694,6 +1693,11 @@ def main() -> None:
             )
 
         st.divider()
+
+        # Botão de recarregar dados (limpa cache sem rodar pipeline)
+        if st.button(_t("reload_data_btn"), use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
         # Botão de pipeline
         run_pipeline = st.button(_t("run_pipeline_btn"), use_container_width=True)
