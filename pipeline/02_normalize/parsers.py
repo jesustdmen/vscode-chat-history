@@ -366,10 +366,17 @@ def extract_response_text(response_parts: list) -> str:
     - kind='questionCarousel'     → Gemini: lista de opções
 
     Pre-processing: removes incremental-patch duplicates where a text part is a
-    strict prefix of the immediately following text part (VS Code streams tokens
-    via kind=2 patches so partial snapshots accumulate in the list).
+    strict prefix of the next text part (VS Code streams tokens via kind=2
+    patches so partial snapshots accumulate in the list).
+    Internal streaming-only kinds (thinking, mcpServersStarting) are transparent
+    to this lookahead — they do NOT act as barriers.
     """
-    # De-dup consecutive text parts that are strict prefixes of the next one
+    # Kinds that are internal VS Code streaming state — transparent to dedup lookahead
+    _STREAMING_INTERNAL = {"thinking", "mcpServersStarting"}
+
+    # De-dup: for each text part, look ahead (past internal/thinking parts) to
+    # find the next text part. If that text part starts with the current value
+    # and is strictly longer, the current part is a streaming partial → skip it.
     deduped: list = []
     for i, part in enumerate(response_parts):
         if not isinstance(part, dict):
@@ -378,7 +385,6 @@ def extract_response_text(response_parts: list) -> str:
         kind = part.get("kind")
         if not kind or kind == "unknown":
             val = part.get("value") or ""
-            # Look ahead: if the next text part starts with the same content, skip this one
             next_val: str | None = None
             for j in range(i + 1, len(response_parts)):
                 nxt = response_parts[j]
@@ -388,11 +394,18 @@ def extract_response_text(response_parts: list) -> str:
                 if not nkind or nkind == "unknown":
                     next_val = nxt.get("value") or ""
                     break
-                # If a non-text part intervenes, don't skip
+                if nkind in _STREAMING_INTERNAL:
+                    continue  # transparent: keep scanning past thinking parts
+                # Real content barrier (inlineReference, toolCall, …) — stop
                 break
-            if next_val is not None and isinstance(val, str) and isinstance(next_val, str):
-                if next_val.startswith(val) and val != next_val:
-                    continue  # skip this truncated duplicate
+            if (
+                next_val is not None
+                and isinstance(val, str)
+                and isinstance(next_val, str)
+                and next_val.startswith(val)
+                and val != next_val
+            ):
+                continue  # skip this truncated/partial streaming duplicate
         deduped.append(part)
     response_parts = deduped
 
