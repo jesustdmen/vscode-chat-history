@@ -412,6 +412,20 @@ def extract_response_text(response_parts: list) -> str:
     parts_text: list[str] = []
     thinking_fallback: list[str] = []
     _pending_ref: str | None = None  # filename waiting to be inlined
+    _pending_codeblock_path: str | None = None  # path do codeblockUri (precede textEditGroup)
+
+    def _uri_to_path(u) -> str:
+        """Extrai fsPath/path de uma URI VS Code (dict ou string)."""
+        if isinstance(u, dict):
+            sub = u.get("uri") if isinstance(u.get("uri"), dict) else {}
+            return (
+                u.get("fsPath")
+                or u.get("path")
+                or (sub.get("fsPath") if isinstance(sub, dict) else "")
+                or (sub.get("path") if isinstance(sub, dict) else "")
+                or ""
+            )
+        return str(u or "")
 
     for part in response_parts:
         if not isinstance(part, dict):
@@ -454,6 +468,33 @@ def extract_response_text(response_parts: list) -> str:
                 fname = Path(path_str).name
                 if fname:
                     _pending_ref = (_pending_ref or "") + fname
+
+        elif kind == "codeblockUri":
+            # Path do arquivo cujo conteúdo aparecerá no próximo textEditGroup
+            uri = part.get("uri") or {}
+            p = _uri_to_path(uri)
+            _pending_codeblock_path = p or None
+
+        elif kind == "textEditGroup":
+            # Edits propostos pelo assistente — recupera o texto completo das edições
+            edits = part.get("edits") or []
+            edit_texts: list[str] = []
+            for batch in edits:
+                if not isinstance(batch, list):
+                    continue
+                for e in batch:
+                    if isinstance(e, dict):
+                        t = e.get("text")
+                        if isinstance(t, str) and t:
+                            edit_texts.append(t)
+            if edit_texts:
+                body = "".join(edit_texts)
+                # Se houver path pendente do codeblockUri, prefixa como cabeçalho
+                if _pending_codeblock_path:
+                    fname = Path(_pending_codeblock_path).name or _pending_codeblock_path
+                    body = f"// {fname}\n{body}"
+                parts_text.append(body)
+            _pending_codeblock_path = None
 
         elif (
             kind == "thinking"
