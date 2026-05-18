@@ -32,7 +32,9 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from pipeline.lib.config import (
+    CHAT_EDITING_SESSION_DIR,
     CHAT_SESSION_DIRS,
+    CLAUDE_PROJECTS_DIR,
     CODEX_ARCHIVED_SESSIONS_DIR,
     CODEX_SESSION_INDEX,
     CODEX_SESSIONS_DIR,
@@ -180,9 +182,9 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
     new_count = 0
 
     # ------------------------------------------------------------------
-    # 1/4. globalStorage/state.vscdb
+    # 1/6. globalStorage/state.vscdb
     # ------------------------------------------------------------------
-    print("\n[1/4] globalStorage/state.vscdb")
+    print("\n[1/6] globalStorage/state.vscdb")
     if GLOBAL_STATE_DB.exists():
         rel = Path("globalStorage") / "state.vscdb"
         dest = snapshot_dir / rel
@@ -219,9 +221,9 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
         skipped_count += 1
 
     # ------------------------------------------------------------------
-    # 2/4. workspaceStorage — state.vscdb de cada hash
+    # 2/6. workspaceStorage — state.vscdb de cada hash
     # ------------------------------------------------------------------
-    print("\n[2/4] workspaceStorage — state.vscdb")
+    print("\n[2/6] workspaceStorage — state.vscdb")
     if WORKSPACE_STORAGE_DIR.exists():
         ws_dbs = find_workspace_vscdb_files(WORKSPACE_STORAGE_DIR)
         print(f"  Encontrados: {len(ws_dbs)} workspace(s)")
@@ -262,9 +264,9 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
         skipped_count += 1
 
     # ------------------------------------------------------------------
-    # 3/4. workspaceStorage — *.jsonl e outros arquivos de interesse (nível direto)
+    # 3/6. workspaceStorage — *.jsonl e outros arquivos de interesse (nível direto)
     # ------------------------------------------------------------------
-    print("\n[3/4] workspaceStorage — *.jsonl / state.json (nível hash/)")
+    print("\n[3/6] workspaceStorage — *.jsonl / state.json (nível hash/)")
     if WORKSPACE_STORAGE_DIR.exists():
         for ext in INGEST_FILE_EXTENSIONS - {".vscdb"}:
             files = list(WORKSPACE_STORAGE_DIR.glob(f"*/*{ext}"))
@@ -301,10 +303,10 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                     copied_count += 1
 
     # ------------------------------------------------------------------
-    # 4/4. workspaceStorage — chatSessions/<uuid>.json e .jsonl
+    # 4/6. workspaceStorage — chatSessions/<uuid>.json e .jsonl
     # ------------------------------------------------------------------
     max_bytes = MAX_CHAT_SESSION_FILE_MB * 1024 * 1024
-    print(f"\n[4/4] chatSessions — .json/.jsonl (limite {MAX_CHAT_SESSION_FILE_MB} MB por arquivo)")
+    print(f"\n[4/6] chatSessions — .json/.jsonl (limite {MAX_CHAT_SESSION_FILE_MB} MB por arquivo)")
     if WORKSPACE_STORAGE_DIR.exists():
         for session_dir_name in CHAT_SESSION_DIRS:
             # Prefere .json (estado final); ignora .jsonl quando .json existe
@@ -454,9 +456,85 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
         print(f"  Total sessões: {total_chat} ({too_large} too_large, lidas da origem)")
 
     # ------------------------------------------------------------------
-    # 5/5. globalStorage/emptyWindowChatSessions — sessões sem workspace
+    # 5/6. workspaceStorage — chatEditingSessions/<uuid>/state.json
     # ------------------------------------------------------------------
-    print(f"\n[5/5] globalStorage/emptyWindowChatSessions")
+    print(f"\n[5/6] {CHAT_EDITING_SESSION_DIR}/<uuid>/state.json")
+    if WORKSPACE_STORAGE_DIR.exists():
+        editing_count = 0
+        editing_too_large = 0
+        for src_file in sorted(WORKSPACE_STORAGE_DIR.glob(f"*/{CHAT_EDITING_SESSION_DIR}/*/state.json")):
+            ws_hash = src_file.parts[-4]
+            session_id = src_file.parent.name
+            size = src_file.stat().st_size
+            fingerprint = file_fingerprint(src_file)
+            change = _change_status(state, src_file, fingerprint)
+            rel = Path("workspaceStorage") / ws_hash / CHAT_EDITING_SESSION_DIR / session_id / src_file.name
+            dest = snapshot_dir / rel
+            if size > max_bytes:
+                manifest.append({
+                    "type": "chat_editing_state",
+                    "source": str(src_file),
+                    "dest": None,
+                    "sidecar": None,
+                    "workspace_hash": ws_hash,
+                    "session_id": session_id,
+                    "status": "too_large",
+                    "size_mb": round(size / 1024 / 1024, 1),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="chat_editing_state",
+                    workspace_hash=ws_hash,
+                    status="too_large",
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                editing_too_large += 1
+                skipped_count += 1
+                continue
+            if _copy_file(src_file, dest):
+                manifest.append({
+                    "type": "chat_editing_state",
+                    "source": str(src_file),
+                    "dest": str(dest.relative_to(snapshot_dir)),
+                    "sidecar": None,
+                    "workspace_hash": ws_hash,
+                    "session_id": session_id,
+                    "status": "copied",
+                    "size_mb": round(size / 1024 / 1024, 1),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="chat_editing_state",
+                    workspace_hash=ws_hash,
+                    status=change,
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "unchanged":
+                    unchanged_count += 1
+                else:
+                    changed_count += 1
+                editing_count += 1
+                copied_count += 1
+        print(f"  Total edit sessions: {editing_count} ({editing_too_large} too_large, lidas da origem)")
+
+    # ------------------------------------------------------------------
+    # 6/6. globalStorage/emptyWindowChatSessions — sessões sem workspace
+    # ------------------------------------------------------------------
+    print(f"\n[6/6] globalStorage/emptyWindowChatSessions")
     if EMPTY_WINDOW_CHAT_SESSIONS_DIR.exists():
         ew_seen_ids: set[str] = set()
         for src_file in sorted(EMPTY_WINDOW_CHAT_SESSIONS_DIR.glob("*.json")):
@@ -708,6 +786,61 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
         print(f"  Total sessões Codex: {codex_total}")
     else:
         _log.info("~/.codex/sessions não encontrado — extensão Codex não instalada ou sem sessões")
+
+    # ------------------------------------------------------------------
+    # 7/7. ~/.claude/projects — sessões do Claude Code CLI
+    # ------------------------------------------------------------------
+    print(f"\n[7/7] ~/.claude/projects — sessões Claude Code")
+    if CLAUDE_PROJECTS_DIR.exists():
+        claude_files: list[Path] = []
+        for project_dir in sorted(CLAUDE_PROJECTS_DIR.iterdir()):
+            if not project_dir.is_dir():
+                continue
+            # Apenas filhos directos do dir de projeto (não sub-dirs de subagentes)
+            for src_file in sorted(project_dir.glob("*.jsonl")):
+                claude_files.append(src_file)
+        print(f"  Encontrados: {len(claude_files)} arquivo(s)")
+        for src_file in claude_files:
+            project_slug = src_file.parent.name
+            session_id = src_file.stem
+            rel = Path("claude_code") / project_slug / src_file.name
+            dest = snapshot_dir / rel
+            size = src_file.stat().st_size
+            fingerprint = file_fingerprint(src_file)
+            change = _change_status(state, src_file, fingerprint)
+            if _copy_file(src_file, dest):
+                manifest.append({
+                    "type": "claude_code_session",
+                    "source": str(src_file),
+                    "dest": str(dest.relative_to(snapshot_dir)),
+                    "sidecar": None,
+                    "workspace_hash": None,
+                    "session_id": session_id,
+                    "status": "copied",
+                    "size_mb": round(size / 1024 / 1024, 3),
+                    "change": change,
+                })
+                upsert_file_state(
+                    state,
+                    str(src_file),
+                    fingerprint=fingerprint,
+                    file_type="claude_code_session",
+                    workspace_hash=None,
+                    status=change,
+                )
+                seen_paths.add(str(src_file))
+                if change == "new":
+                    new_count += 1
+                elif change == "changed":
+                    changed_count += 1
+                else:
+                    unchanged_count += 1
+                copied_count += 1
+
+        claude_total = sum(1 for m in manifest if m.get("type") == "claude_code_session")
+        print(f"  Total sessões Claude Code: {claude_total}")
+    else:
+        _log.info("~/.claude/projects não encontrado — Claude Code CLI não instalado ou sem sessões")
 
     # ------------------------------------------------------------------
     # Grava manifesto

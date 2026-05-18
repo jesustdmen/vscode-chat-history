@@ -46,21 +46,30 @@ from pipeline.lib.models import ChatMessage, SessionSummary
 from parsers import (
     parse_keys_sidecar,
     parse_copilot_jsonl_file,
+    parse_chat_editing_state,
     parse_chat_session_json,
     parse_chat_session_jsonl,
     parse_codex_session_jsonl,
+    parse_claude_code_session,
 )
 from aggregator import build_summaries, _build_ws_path_to_hash, _normalize_cwd
+
+
+# Bump when parser logic or ChatMessage/SessionSummary serialization changes.
+_SHARD_SCHEMA_VERSION = "3"
 
 
 # ---------------------------------------------------------------------------
 # Utilitários
 # ---------------------------------------------------------------------------
 
+_CLI_SOURCES = {"codex_session", "claude_code_session"}
+
+
 def _codex_workspace_fixup(
     messages: list[ChatMessage], summaries: list[SessionSummary]
 ) -> None:
-    """Preenche workspace_hash para sessões Codex cujo cwd ainda não foi resolvido.
+    """Preenche workspace_hash para sessões Codex e Claude Code cujo cwd ainda não foi resolvido.
 
     Necessário porque shards reutilizados do cache não chamam build_summaries
     novamente, portanto qualquer lógica nova no aggregator só afeta shards novos.
@@ -75,7 +84,7 @@ def _codex_workspace_fixup(
     cwd_by_session: dict[str, str] = {}
     for m in messages:
         if (
-            m.source == "codex_session"
+            m.source in _CLI_SOURCES
             and m.role == "system"
             and m.text
             and m.session_id not in cwd_by_session
@@ -94,7 +103,7 @@ def _codex_workspace_fixup(
 
     fixed = 0
     for s in summaries:
-        if s.source != "codex_session" or s.workspace_hash:
+        if s.source not in _CLI_SOURCES or s.workspace_hash:
             continue
         cwd = cwd_by_session.get(s.session_id or "") or ""
         if not cwd:
@@ -106,7 +115,7 @@ def _codex_workspace_fixup(
             fixed += 1
 
     if fixed:
-        print(f"  [codex-ws-fixup] {fixed} sessão(ões) Codex vinculadas a workspace.")
+        print(f"  [cli-ws-fixup] {fixed} sessão(ões) CLI vinculadas a workspace.")
 
 
 def _latest_snapshot(raw_dir: Path) -> Path | None:
@@ -122,7 +131,7 @@ def _manifest_entries(snapshot_dir: Path) -> list[dict]:
 
 
 def _shard_key(source_path: str, file_type: str) -> str:
-    raw = f"{file_type}:{source_path}".encode("utf-8", errors="replace")
+    raw = f"v{_SHARD_SCHEMA_VERSION}:{file_type}:{source_path}".encode("utf-8", errors="replace")
     return hashlib.sha1(raw).hexdigest()
 
 
@@ -178,7 +187,15 @@ def _remove_stale_shards(valid_keys: set[str]) -> int:
 def _collect_normalize_targets(snapshot_dir: Path) -> list[dict]:
     entries = _manifest_entries(snapshot_dir)
     targets: list[dict] = []
-    allowed_types = {"vscdb", "jsonl", "chat_session_json", "chat_session_jsonl", "codex_session"}
+    allowed_types = {
+        "vscdb",
+        "jsonl",
+        "chat_session_json",
+        "chat_session_jsonl",
+        "chat_editing_state",
+        "codex_session",
+        "claude_code_session",
+    }
     for entry in entries:
         if entry.get("event") == "ingest_run":
             continue
@@ -230,8 +247,12 @@ def _parse_target(target: dict) -> list[ChatMessage]:
         return parse_chat_session_json(parse_path, ws_hash or "")
     if parse_type == "chat_session_jsonl":
         return parse_chat_session_jsonl(parse_path, ws_hash or "")
+    if parse_type == "chat_editing_state":
+        return parse_chat_editing_state(parse_path, ws_hash or "")
     if parse_type == "codex_session":
         return parse_codex_session_jsonl(parse_path)
+    if parse_type == "claude_code_session":
+        return parse_claude_code_session(parse_path)
     return []
 
 

@@ -67,6 +67,10 @@ TRANSLATIONS: dict[str, dict] = {
         "conversation_window_last":  "Últimas {n}",
         "conversation_window_all":   "Todas",
         "conversation_render_meta":  "Mostrando {shown} de {total} mensagem(ns). {hidden} ocultada(s) para manter a tela responsiva.",
+        "edit_telemetry_title":      "🛠️ Telemetria de edição ({n})",
+        "edit_telemetry_caption":    "Eventos técnicos ligados à mesma sessão: checkpoints, create, textEdit e snapshots do chatEditingSessions.",
+        "edit_telemetry_window_label":"Eventos",
+        "edit_telemetry_meta":       "Mostrando {shown} de {total} evento(s) técnicos.",
 
         # Tab Diário
         "diary_title":          "Diário de Atividades",
@@ -212,6 +216,10 @@ TRANSLATIONS: dict[str, dict] = {
         "conversation_window_last":  "Last {n}",
         "conversation_window_all":   "All",
         "conversation_render_meta":  "Showing {shown} of {total} message(s). {hidden} hidden to keep the view responsive.",
+        "edit_telemetry_title":      "🛠️ Edit telemetry ({n})",
+        "edit_telemetry_caption":    "Technical events linked to the same session: checkpoints, create, textEdit, and snapshots from chatEditingSessions.",
+        "edit_telemetry_window_label":"Events",
+        "edit_telemetry_meta":       "Showing {shown} of {total} technical event(s).",
 
         # Activity Log tab
         "diary_title":          "Activity Log",
@@ -357,6 +365,10 @@ TRANSLATIONS: dict[str, dict] = {
         "conversation_window_last":  "Últimos {n}",
         "conversation_window_all":   "Todos",
         "conversation_render_meta":  "Mostrando {shown} de {total} mensaje(s). {hidden} oculto(s) para mantener la vista responsiva.",
+        "edit_telemetry_title":      "🛠️ Telemetría de edición ({n})",
+        "edit_telemetry_caption":    "Eventos técnicos ligados a la misma sesión: checkpoints, create, textEdit y snapshots de chatEditingSessions.",
+        "edit_telemetry_window_label":"Eventos",
+        "edit_telemetry_meta":       "Mostrando {shown} de {total} evento(s) técnicos.",
 
         # Diario tab
         "diary_title":          "Diario de Actividad",

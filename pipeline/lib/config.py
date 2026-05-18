@@ -35,6 +35,11 @@ CODEX_ARCHIVED_SESSIONS_DIR: Path = Path.home() / ".codex" / "archived_sessions"
 CODEX_SESSION_INDEX: Path         = Path.home() / ".codex" / "session_index.jsonl"
 
 # ---------------------------------------------------------------------------
+# Claude Code CLI — projetos e sessões em ~/.claude/projects/
+# ---------------------------------------------------------------------------
+CLAUDE_PROJECTS_DIR: Path = Path.home() / ".claude" / "projects"
+
+# ---------------------------------------------------------------------------
 # Raiz do pipeline (destino de escrita)
 # ---------------------------------------------------------------------------
 PIPELINE_ROOT: Path = Path(__file__).resolve().parents[1]
@@ -79,6 +84,7 @@ INGEST_FILE_EXTENSIONS = {".vscdb", ".jsonl", ".json"}
 
 # Subpastas de sessão de chat a serem ingeridas (dentro de <hash>/)
 CHAT_SESSION_DIRS = ["chatSessions"]
+CHAT_EDITING_SESSION_DIR = "chatEditingSessions"
 
 # Tamanho máximo de arquivo de sessão a ser COPIADO para raw/ (em MB).
 # Arquivos maiores são registrados no manifesto com status="too_large"

@@ -24,14 +24,14 @@ Ela funciona bem para o uso pretendido, mas ainda não está pronta para produç
 
 ## O que é
 
-O VS Code armazena o histórico de chat do Copilot (e outros assistentes de IA) em arquivos SQLite e JSONL dentro de `%APPDATA%\Code\User\`. O Codex CLI armazena o seu próprio histórico em `~/.codex/sessions/`. Esta ferramenta:
+O VS Code armazena o histórico de chat do Copilot (e outros assistentes de IA) em arquivos SQLite e JSONL dentro de `%APPDATA%\Code\User\`. O Codex CLI armazena seu histórico em `~/.codex/sessions/`. O Claude Code CLI armazena seu histórico em `~/.claude/projects/`. Esta ferramenta:
 
 1. **Copia** esses arquivos para um snapshot local isolado (processamento incremental — só reprocessa o que mudou)
 2. **Normaliza** os dados (reconstruindo patches incrementais de sessões ativas)
 3. **Expõe** um viewer Streamlit interativo para navegar, buscar e exportar conversas
 
 ```
-AppData do VS Code  +  ~/.codex/sessions/
+AppData do VS Code  +  ~/.codex/sessions/  +  ~/.claude/projects/
            │
            ▼
  01_ingest   → snapshot somente-leitura + limpeza automática (mantém 2)
@@ -50,13 +50,14 @@ AppData do VS Code  +  ~/.codex/sessions/
 
 ## Funcionalidades
 
-- ✅ Lê **6 fontes distintas**: `chat_session_json`, `chat_session_jsonl`, `agent_sessions`, `chat_session_index`, `openai_chatgpt`, `codex_session`
+- ✅ Lê **7 fontes distintas**: `chat_session_json`, `chat_session_jsonl`, `agent_sessions`, `chat_session_index`, `openai_chatgpt`, `codex_session`, `claude_code_session`
 - ✅ Suporte a **sessões Codex CLI** — lê `~/.codex/sessions/` e `~/.codex/archived_sessions/` com títulos AI-generated do `session_index.jsonl`
+- ✅ Suporte a **sessões Claude Code CLI** — lê `~/.claude/projects/<slug>/<uuid>.jsonl`; vincula ao workspace via `cwd`; exibe com badge âmbar
 - ✅ Suporte a **sessões sem workspace** (`emptyWindowChatSessions`) — captura conversas abertas fora de qualquer pasta
 - ✅ Reconstrói sessões ativas (workspaces abertos) a partir de patches JSONL incrementais
 - ✅ Processamento **incremental**: ingest rastreia alterações por fingerprint; normalize reaprovita shards inalterados
 - ✅ Vincula sessões Codex ao workspace correto via lookup `cwd → workspaceStorage`
-- ✅ Viewer Streamlit com 4 abas: **Conversa**, **Diário de Atividades**, **Workspaces**, **Tags**
+- ✅ Viewer Streamlit com 6 abas: **Conversa**, **Diário**, **Timeline**, **Workspaces**, **Tags**, **Exportar**
 - ✅ Toggle tema claro/escuro
 - ✅ Interface em 3 idiomas: 🇧🇷 Português, 🇺🇸 English, 🇪🇸 Español — seletor na sidebar
 - ✅ Badges coloridos por fonte · stat bar · busca com índice pré-computado

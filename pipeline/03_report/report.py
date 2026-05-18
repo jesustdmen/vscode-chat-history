@@ -85,7 +85,8 @@ def _report_topics(summaries: list[dict], out_dir: Path) -> Path:
     """
     relevant = [
         s for s in summaries
-        if s.get("source") not in {"agent_sessions"} and s.get("message_count", 0) > 0
+        if s.get("source") not in {"agent_sessions", "chat_editing_state"}
+        and s.get("message_count", 0) > 0
     ]
 
     css_index: dict[str, dict] = {}
@@ -201,8 +202,13 @@ def _report_timeline(messages: list[dict], out_dir: Path) -> Path:
                 "timestamp":    m["timestamp"],
                 "session_id":   m.get("session_id"),
                 "thread_id":    m.get("thread_id"),
+                "request_id":   m.get("request_id"),
                 "role":         m.get("role"),
                 "source":       m.get("source"),
+                "model_id":     m.get("model_id"),
+                "agent_id":     m.get("agent_id"),
+                "agent_name":   m.get("agent_name"),
+                "mode_name":    m.get("mode_name"),
                 "text":         (m.get("text") or "")[:200],
                 "tool":         m.get("tool"),
                 "files_changed": m.get("files_changed") or [],

@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import unquote, urlparse
 
 # Raiz do repositório — necessário para imports de pipeline.*
 _ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +49,37 @@ def _stable_id(key: str) -> str:
     independente da ordem de execução do pipeline.
     """
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"chatsvs:{key}"))
+
+
+def _normalize_windows_path(path: str) -> str:
+    normalized = unquote(path).replace("/", "\\").strip("\\")
+    if len(normalized) >= 2 and normalized[1] == ":":
+        normalized = normalized[0].upper() + normalized[1:]
+    return normalized
+
+
+def _uri_to_path(uri) -> str:
+    if isinstance(uri, dict):
+        if uri.get("fsPath"):
+            return str(uri.get("fsPath"))
+        if uri.get("path"):
+            return _normalize_windows_path(str(uri.get("path")))
+        if uri.get("external"):
+            return _uri_to_path(uri.get("external"))
+        return ""
+    if isinstance(uri, str):
+        if uri.startswith("file://"):
+            parsed = urlparse(uri)
+            return _normalize_windows_path(parsed.path)
+        return uri
+    return ""
+
+
+def _short_preview(text: str, limit: int = 160) -> str:
+    flat = text.replace("\r", " ").replace("\n", " ").strip()
+    if len(flat) <= limit:
+        return flat
+    return flat[:limit] + "…"
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +244,126 @@ def parse_chat_session_index(
                     ensure_ascii=False,
                 ),
                 workspace_hash=ws_hash or None,
+                raw_source_file=source_file,
+            )
+        )
+
+    return messages
+
+
+# ---------------------------------------------------------------------------
+# Parser: chatEditingSessions/<uuid>/state.json
+# ---------------------------------------------------------------------------
+
+def parse_chat_editing_state(path: Path, ws_hash: str = "") -> list[ChatMessage]:
+    """Extrai checkpoints, operações e recentSnapshot de chatEditingSessions/state.json."""
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    timeline = obj.get("timeline") or {}
+    checkpoints = timeline.get("checkpoints") or []
+    operations = timeline.get("operations") or []
+    recent_entries = ((obj.get("recentSnapshot") or {}).get("entries") or [])
+
+    session_id = path.parent.name
+    source_file = str(path)
+    messages: list[ChatMessage] = []
+
+    for checkpoint in checkpoints:
+        if not isinstance(checkpoint, dict):
+            continue
+        payload = {
+            "_type": "chat_edit_checkpoint",
+            "checkpoint_id": checkpoint.get("checkpointId"),
+            "epoch": checkpoint.get("epoch"),
+            "label": checkpoint.get("label"),
+            "description": checkpoint.get("description"),
+        }
+        messages.append(
+            ChatMessage(
+                source="chat_editing_state",
+                session_id=session_id,
+                thread_id=session_id,
+                timestamp=None,
+                role="system",
+                text=json.dumps(payload, ensure_ascii=False),
+                workspace_hash=ws_hash or None,
+                request_id=checkpoint.get("requestId") or None,
+                raw_source_file=source_file,
+            )
+        )
+
+    for operation in operations:
+        if not isinstance(operation, dict):
+            continue
+        telemetry = operation.get("telemetryInfo") or {}
+        op_type = operation.get("type") or "unknown"
+        path_str = _uri_to_path(operation.get("uri"))
+        edits = operation.get("edits") or []
+        preview = []
+        if isinstance(edits, list):
+            for edit in edits[:3]:
+                if not isinstance(edit, dict):
+                    continue
+                text = edit.get("text")
+                if isinstance(text, str) and text:
+                    preview.append(_short_preview(text, limit=120))
+        payload = {
+            "_type": "chat_edit_operation",
+            "op_type": op_type,
+            "epoch": operation.get("epoch"),
+            "path": path_str or None,
+            "edit_count": len(edits) if isinstance(edits, list) else None,
+            "initial_content_len": len(operation.get("initialContent") or ""),
+            "preview": preview or None,
+        }
+        messages.append(
+            ChatMessage(
+                source="chat_editing_state",
+                session_id=session_id,
+                thread_id=session_id,
+                timestamp=None,
+                role="system",
+                text=json.dumps(payload, ensure_ascii=False),
+                files_changed=[path_str] if path_str else [],
+                workspace_hash=ws_hash or None,
+                request_id=operation.get("requestId") or telemetry.get("requestId") or None,
+                model_id=telemetry.get("modelId") or None,
+                agent_id=telemetry.get("agentId") or None,
+                mode_name=telemetry.get("modeId") or None,
+                raw_source_file=source_file,
+            )
+        )
+
+    for entry in recent_entries:
+        if not isinstance(entry, dict):
+            continue
+        telemetry = entry.get("telemetryInfo") or {}
+        path_str = _uri_to_path(entry.get("resource"))
+        payload = {
+            "_type": "chat_edit_snapshot",
+            "path": path_str or None,
+            "language_id": entry.get("languageId"),
+            "state": entry.get("state"),
+            "original_hash": entry.get("originalHash"),
+            "current_hash": entry.get("currentHash"),
+        }
+        messages.append(
+            ChatMessage(
+                source="chat_editing_state",
+                session_id=session_id,
+                thread_id=session_id,
+                timestamp=None,
+                role="system",
+                text=json.dumps(payload, ensure_ascii=False),
+                files_changed=[path_str] if path_str else [],
+                workspace_hash=ws_hash or None,
+                request_id=telemetry.get("requestId") or None,
+                model_id=telemetry.get("modelId") or None,
+                agent_id=telemetry.get("agentId") or None,
+                mode_name=telemetry.get("modeId") or None,
                 raw_source_file=source_file,
             )
         )
@@ -462,6 +614,7 @@ def extract_response_text(response_parts: list) -> str:
                 or ref.get("path")
                 or (ref.get("uri") or {}).get("fsPath")
                 or (ref.get("uri") or {}).get("path")
+                or _uri_to_path(ref.get("location"))
                 or ""
             )
             if isinstance(path_str, str) and path_str:
@@ -604,6 +757,24 @@ def parse_chat_session_obj(
         if not isinstance(req, dict):
             continue
 
+        request_id = str(req.get("requestId") or "").strip() or None
+        response_id = str(req.get("responseId") or "").strip() or None
+        model_id = str(req.get("modelId") or "").strip() or None
+
+        agent = req.get("agent") or {}
+        if isinstance(agent, dict):
+            agent_id = str(agent.get("id") or "").strip() or None
+            agent_name = str(agent.get("name") or agent.get("fullName") or "").strip() or None
+        else:
+            agent_id = None
+            agent_name = None
+
+        mode_info = req.get("modeInfo") or {}
+        if isinstance(mode_info, dict):
+            mode_name = str(mode_info.get("modeName") or mode_info.get("modeId") or "").strip() or None
+        else:
+            mode_name = None
+
         # ts_user: quando o usuário enviou a mensagem
         # ts_resp: quando o assistente terminou de responder (modelState.completedAt)
         # Usar timestamps separados corrige sessões com Restore Checkpoint, onde a
@@ -632,6 +803,12 @@ def parse_chat_session_obj(
                     role="user",
                     text=user_text,
                     workspace_hash=_ws,
+                    request_id=request_id,
+                    response_id=response_id,
+                    model_id=model_id,
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    mode_name=mode_name,
                     raw_source_file=source_file,
                 )
             )
@@ -656,6 +833,12 @@ def parse_chat_session_obj(
                     text=resp_text,
                     files_changed=files_changed,
                     workspace_hash=_ws,
+                    request_id=request_id,
+                    response_id=response_id,
+                    model_id=model_id,
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    mode_name=mode_name,
                     raw_source_file=source_file,
                 )
             )
@@ -676,6 +859,12 @@ def parse_chat_session_obj(
                             if tc.get("input") else None
                         ),
                         workspace_hash=_ws,
+                        request_id=request_id,
+                        response_id=response_id,
+                        model_id=model_id,
+                        agent_id=agent_id,
+                        agent_name=agent_name,
+                        mode_name=mode_name,
                         raw_source_file=source_file,
                     )
                 )
@@ -847,6 +1036,194 @@ def parse_codex_session_jsonl(path: Path) -> list[ChatMessage]:
                     raw_source_file=source,
                 )
             )
+
+    return messages
+
+
+# ---------------------------------------------------------------------------
+# Claude Code CLI
+# ---------------------------------------------------------------------------
+
+def parse_claude_code_session(path: Path) -> list[ChatMessage]:
+    """
+    Parseia um arquivo .jsonl do Claude Code (~/.claude/projects/<slug>/<uuid>.jsonl).
+
+    Formato de cada linha:
+      {"type": "user"|"assistant"|"ai-title"|..., "message": {...},
+       "sessionId": "...", "timestamp": "...", "cwd": "...", ...}
+
+    Extrai:
+      - type=user       → mensagem do usuário (apenas itens type=text)
+      - type=assistant  → resposta (texto + tool_use como role=tool separado)
+      - type=ai-title   → título gerado pela IA (role=system)
+    Ignora: queue-operation, attachment, file-history-snapshot, last-prompt,
+            system, isSidechain=true (sub-agentes)
+    """
+    source = str(path)
+    session_id = path.stem
+    project_slug = path.parent.name
+    messages: list[ChatMessage] = []
+    resolved_sid: str | None = None
+    workspace_emitted = False
+
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception as exc:
+        _log.warning("Falha ao ler sessão Claude Code %s: %s", path, exc)
+        return []
+
+    for raw in lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+        event_type = event.get("type")
+        if not event_type:
+            continue
+
+        if event_type in (
+            "queue-operation", "attachment", "file-history-snapshot",
+            "last-prompt", "system",
+        ):
+            continue
+
+        if resolved_sid is None:
+            candidate = str(event.get("sessionId") or "").strip()
+            if candidate:
+                resolved_sid = candidate
+
+        sid = resolved_sid or session_id
+        ts = event.get("timestamp") or None
+        cwd = str(event.get("cwd") or "").strip()
+
+        # Emite marcador de workspace na primeira mensagem com cwd
+        if cwd and not workspace_emitted:
+            workspace_emitted = True
+            messages.append(ChatMessage(
+                source="claude_code_session",
+                session_id=sid,
+                thread_id=sid,
+                timestamp=ts,
+                role="system",
+                text=json.dumps(
+                    {"_type": "session_workspace", "cwd": cwd, "project": project_slug},
+                    ensure_ascii=False,
+                ),
+                workspace_hash=None,
+                raw_source_file=source,
+            ))
+
+        if event_type == "ai-title":
+            title = str(event.get("aiTitle") or "").strip()
+            if title:
+                messages.append(ChatMessage(
+                    source="claude_code_session",
+                    session_id=sid,
+                    thread_id=sid,
+                    timestamp=ts,
+                    role="system",
+                    text=json.dumps(
+                        {"_type": "thread_title", "title": title, "project": project_slug},
+                        ensure_ascii=False,
+                    ),
+                    workspace_hash=None,
+                    raw_source_file=source,
+                ))
+            continue
+
+        if event_type not in ("user", "assistant"):
+            continue
+
+        # Ignora mensagens de sub-agente
+        if event.get("isSidechain"):
+            continue
+
+        msg = event.get("message") or {}
+        role = str(msg.get("role") or event_type)
+        content: list = msg.get("content") if isinstance(msg.get("content"), list) else []
+
+        if role == "user":
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    t = str(item.get("text") or "").strip()
+                    if t:
+                        parts.append(t)
+            text = "\n\n".join(parts)
+            if not text:
+                continue
+            messages.append(ChatMessage(
+                source="claude_code_session",
+                session_id=sid,
+                thread_id=sid,
+                timestamp=ts,
+                role="user",
+                text=text,
+                workspace_hash=None,
+                raw_source_file=source,
+            ))
+
+        elif role == "assistant":
+            model_id = str(msg.get("model") or "").strip() or None
+            request_id = str(event.get("requestId") or "").strip() or None
+            text_parts: list[str] = []
+            tool_calls: list[dict] = []
+            files_changed: list[str] = []
+
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                item_type = item.get("type")
+                if item_type == "text":
+                    t = str(item.get("text") or "").strip()
+                    if t:
+                        text_parts.append(t)
+                elif item_type == "tool_use":
+                    name = str(item.get("name") or "").strip()
+                    inp = item.get("input") or {}
+                    if name:
+                        tool_calls.append({"name": name, "input": inp})
+                    if name in ("Read", "Edit", "Write", "NotebookEdit"):
+                        fp = str(inp.get("file_path") or "").strip()
+                        if fp:
+                            files_changed.append(fp)
+                # thinking blocks são ignorados
+
+            text = "\n\n".join(text_parts)
+            if text:
+                messages.append(ChatMessage(
+                    source="claude_code_session",
+                    session_id=sid,
+                    thread_id=sid,
+                    timestamp=ts,
+                    role="assistant",
+                    text=text,
+                    model_id=model_id,
+                    request_id=request_id,
+                    files_changed=files_changed,
+                    workspace_hash=None,
+                    raw_source_file=source,
+                ))
+
+            for tc in tool_calls:
+                messages.append(ChatMessage(
+                    source="claude_code_session",
+                    session_id=sid,
+                    thread_id=sid,
+                    timestamp=ts,
+                    role="tool",
+                    text="",
+                    tool=tc["name"],
+                    tool_input=json.dumps(tc["input"], ensure_ascii=False),
+                    model_id=model_id,
+                    request_id=request_id,
+                    workspace_hash=None,
+                    raw_source_file=source,
+                ))
 
     return messages
 

@@ -151,8 +151,8 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
             session_id if len(session_id) == 32 else None,
         )
 
-        # Para sessões Codex, deriva workspace_hash via lookup cwd → workspaceStorage
-        if not ws_hash and source == "codex_session":
+        # Para sessões Codex e Claude Code, deriva workspace_hash via lookup cwd → workspaceStorage
+        if not ws_hash and source in ("codex_session", "claude_code_session"):
             for m in msgs:
                 if m.role == "system" and m.text:
                     try:

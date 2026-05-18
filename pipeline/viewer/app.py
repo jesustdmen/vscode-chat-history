@@ -20,7 +20,7 @@ import sys
 import uuid
 import zipfile
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -131,22 +131,28 @@ st.set_page_config(
 _SOURCE_STYLE: dict[str, tuple[str, str]] = {
     "chat_session_json":  ("#5b21b6", "#ede9fe"),
     "chat_session_jsonl": ("#1d4ed8", "#dbeafe"),
+    "chat_editing_state": ("#7c2d12", "#ffedd5"),
     "chat_session":       ("#4338ca", "#e0e7ff"),
     "openai_chatgpt":     ("#065f46", "#d1fae5"),
     "chat_session_index": ("#374151", "#f3f4f6"),
     "copilot_jsonl":      ("#0e7490", "#cffafe"),
     "copilot_jsonl_raw":  ("#92400e", "#fef3c7"),
-    "agent_sessions":     ("#7f1d1d", "#fee2e2"),
+    "agent_sessions":       ("#7f1d1d", "#fee2e2"),
+    "codex_session":        ("#1e3a5f", "#dbeafe"),
+    "claude_code_session":  ("#b45309", "#fffbeb"),
 }
 _SOURCE_LABEL: dict[str, str] = {
     "chat_session_json":  "json",
     "chat_session_jsonl": "jsonl",
+    "chat_editing_state": "edits",
     "chat_session":       "session",
     "openai_chatgpt":     "openai",
     "chat_session_index": "index",
     "copilot_jsonl":      "copilot",
     "copilot_jsonl_raw":  "raw",
     "agent_sessions":     "agent",
+    "codex_session":      "codex",
+    "claude_code_session": "claude",
 }
 
 
@@ -198,9 +204,9 @@ _TAGS_FILE      = _ROOT / "pipeline" / "output" / "normalized" / "tags.json"
 _WS_STORAGE     = Path(os.environ.get("APPDATA", "")) / "Code" / "User" / "workspaceStorage"
 
 # ---------------------------------------------------------------------------
-# Timezone BRT
+# Timezone local do sistema
 # ---------------------------------------------------------------------------
-_BRT = timezone(timedelta(hours=-3))
+_LOCAL_TZ = datetime.now().astimezone().tzinfo or timezone.utc
 
 
 def _to_utc_aware(ts_iso: str) -> datetime:
@@ -210,29 +216,33 @@ def _to_utc_aware(ts_iso: str) -> datetime:
     return dt
 
 
+def _to_local_aware(ts_iso: str) -> datetime:
+    return _to_utc_aware(ts_iso).astimezone(_LOCAL_TZ)
+
+
 def ts_to_label(ts: str | None) -> str:
     if not ts:
         return ""
     try:
-        return _to_utc_aware(ts).astimezone(_BRT).strftime("%d/%m/%Y %H:%M")
+        return _to_local_aware(ts).strftime("%d/%m/%Y %H:%M")
     except Exception:
         return ts[:16]
 
 
-def ts_to_date_brt(ts: str | None) -> str:
+def ts_to_local_date(ts: str | None) -> str:
     if not ts:
         return ""
     try:
-        return _to_utc_aware(ts).astimezone(_BRT).strftime("%Y-%m-%d")
+        return _to_local_aware(ts).strftime("%Y-%m-%d")
     except Exception:
         return ts[:10]
 
 
-def _to_brt(ts_iso: str | None) -> str | None:
+def _to_local_iso(ts_iso: str | None) -> str | None:
     if not ts_iso:
         return None
     try:
-        return _to_utc_aware(ts_iso).astimezone(_BRT).isoformat(timespec="seconds")
+        return _to_local_aware(ts_iso).isoformat(timespec="seconds")
     except Exception:
         return ts_iso
 
@@ -380,14 +390,19 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
                 return _to_utc_aware(ts)
             except Exception:
                 return _ts_min
+        thread_msgs = by_thread.get(tid, [])
         msgs = sorted(
-            [m for m in by_thread.get(tid, []) if m.get("role") != "system"],
+            [m for m in thread_msgs if m.get("role") != "system"],
             key=_sort_key,
         )
+        edit_events = [
+            m for m in thread_msgs
+            if m.get("source") == "chat_editing_state"
+        ]
         first_ts   = s.get("first_ts") or next((m.get("timestamp") or "" for m in msgs if m.get("timestamp")), "")
         last_ts    = s.get("last_ts") or ""
-        created_label = ts_to_date_brt(first_ts) if first_ts else "—"
-        date_label = ts_to_date_brt(last_ts) if last_ts else "—"
+        created_label = ts_to_local_date(first_ts) if first_ts else "—"
+        date_label = ts_to_local_date(last_ts) if last_ts else "—"
         ws_hash = s.get("workspace_hash") or ""
         tags    = list((workspace_tags or {}).get(ws_hash, []))
         search_text = " ".join([
@@ -402,13 +417,15 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
             "user_turns": s.get("user_turns", 0), "assistant_turns": s.get("assistant_turns", 0),
             "tool_calls": s.get("tool_calls", 0), "message_count": len(msgs),
             "messages": msgs, "workspace_hash": ws_hash,
+            "edit_events": edit_events,
+            "edit_event_count": len(edit_events),
             "_search_text": search_text, "tags": tags,
         }
 
     sessions: dict[str, dict] = {}
     for s in summaries:
         src = s.get("source", "")
-        if src in ("chat_session_index", "agent_sessions"):
+        if src in ("chat_session_index", "agent_sessions", "chat_editing_state"):
             continue
         tid = s.get("thread_id") or s.get("session_id") or ""
         if tid:
@@ -792,7 +809,7 @@ def build_session_json(session: dict) -> dict:
             current_user = {
                 "message_id": f"u-{user_idx:04d}",
                 "content":    (m.get("text") or "").strip(),
-                "sent_at":    _to_brt(m.get("timestamp")),
+                "sent_at":    _to_local_iso(m.get("timestamp")),
             }
             current_responses = []
         elif role in ("assistant", "tool") and current_user is not None:
@@ -801,7 +818,7 @@ def build_session_json(session: dict) -> dict:
                 "message_id": f"a-{asst_idx:04d}",
                 "role":       role,
                 "content":    (m.get("text") or "").strip(),
-                "sent_at":    _to_brt(m.get("timestamp")),
+                "sent_at":    _to_local_iso(m.get("timestamp")),
             }
             if role == "tool" and m.get("tool"):
                 entry["tool_name"] = m["tool"]
@@ -825,8 +842,8 @@ def build_session_json(session: dict) -> dict:
             "session_id":          session["thread_id"],
             "session_name":        session["title"],
             "session_date":        session["date_label"],
-            "created_at":          _to_brt(first_ts),
-            "last_interaction_at": _to_brt(session.get("last_ts")),
+            "created_at":          _to_local_iso(first_ts),
+            "last_interaction_at": _to_local_iso(session.get("last_ts")),
             "stats": {
                 "user_turns":      session["user_turns"],
                 "assistant_turns": session["assistant_turns"],
@@ -875,6 +892,60 @@ def render_message(m: dict) -> None:
                     st.json(json.loads(m["tool_input"]))
                 except Exception:
                     st.code(m["tool_input"], language=None)
+
+
+def _decode_edit_event(m: dict) -> dict:
+    try:
+        payload = json.loads(m.get("text") or "{}")
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
+    return {"_type": "unknown", "raw": m.get("text") or ""}
+
+
+def _render_edit_event(m: dict) -> None:
+    payload = _decode_edit_event(m)
+    event_type = payload.get("_type") or "unknown"
+    request_id = m.get("request_id") or "—"
+    model_id = m.get("model_id") or "—"
+    agent_id = m.get("agent_id") or "—"
+
+    if event_type == "chat_edit_checkpoint":
+        label = payload.get("label") or "checkpoint"
+        description = payload.get("description") or ""
+        epoch = payload.get("epoch")
+        st.markdown(f"**Checkpoint** · epoch `{epoch}`")
+        st.caption(f"requestId: `{request_id}`")
+        st.code(label + (f"\n{description}" if description else ""), language=None)
+        return
+
+    if event_type == "chat_edit_operation":
+        op_type = payload.get("op_type") or "operation"
+        path = payload.get("path") or "—"
+        edit_count = payload.get("edit_count")
+        preview = payload.get("preview") or []
+        st.markdown(f"**{op_type}** · `{path}`")
+        st.caption(
+            f"requestId: `{request_id}` · edits: `{edit_count}` · model: `{model_id}` · agent: `{agent_id}`"
+        )
+        if preview:
+            st.code("\n".join(str(item) for item in preview), language=None)
+        return
+
+    if event_type == "chat_edit_snapshot":
+        path = payload.get("path") or "—"
+        language_id = payload.get("language_id") or "—"
+        st.markdown(f"**Snapshot** · `{path}`")
+        st.caption(
+            f"requestId: `{request_id}` · lang: `{language_id}` · model: `{model_id}` · agent: `{agent_id}`"
+        )
+        st.json(payload)
+        return
+
+    st.markdown("**Evento técnico**")
+    st.caption(f"requestId: `{request_id}`")
+    st.code(m.get("text") or "", language=None)
 
 
 # ---------------------------------------------------------------------------
@@ -974,6 +1045,7 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
     st.divider()
 
     msgs = session["messages"]
+    edit_events = session.get("edit_events", [])
     if not msgs:
         st.markdown(
             '<div class="empty-state">'
@@ -982,7 +1054,30 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
             '</div>',
             unsafe_allow_html=True,
         )
-        return
+        if not edit_events:
+            return
+
+    if edit_events:
+        with st.expander(
+            _t("edit_telemetry_title", n=len(edit_events)),
+            expanded=False,
+        ):
+            st.caption(_t("edit_telemetry_caption"))
+            event_options = [25, 100, 250, 0]
+            event_window = st.selectbox(
+                _t("edit_telemetry_window_label"),
+                event_options,
+                index=1,
+                format_func=lambda value: _t("conversation_window_all") if value == 0 else _t("conversation_window_last", n=value),
+                key=f"edit_window_{session['thread_id']}",
+            )
+            shown_events = edit_events if event_window == 0 else edit_events[-event_window:]
+            st.caption(
+                _t("edit_telemetry_meta", shown=len(shown_events), total=len(edit_events))
+            )
+            for event in shown_events:
+                _render_edit_event(event)
+                st.markdown("---")
 
     control_col, info_col = st.columns([1.2, 3])
     show_tools = control_col.checkbox(_t("show_tool_calls"), value=False)
@@ -1162,17 +1257,17 @@ def tab_timeline(sessions: dict[str, dict], ws_paths: dict[str, str] | None = No
             m for m in s["messages"]
             if m.get("role") in ("user", "assistant", "tool")
             and (show_tools or m.get("role") != "tool")
-            and ts_to_date_brt(m.get("timestamp")) == sel_date_iso
+            and ts_to_local_date(m.get("timestamp")) == sel_date_iso
         ]
         if not day_msgs:
             continue
         day_msgs.sort(key=lambda m: (
-            _to_utc_aware(m["timestamp"]) if m.get("timestamp") else datetime.min.replace(tzinfo=timezone.utc)
+            _to_local_aware(m["timestamp"]) if m.get("timestamp") else datetime.min.replace(tzinfo=timezone.utc)
         ))
         sessions_for_day.append((s, day_msgs))
 
     sessions_for_day.sort(key=lambda t: (
-        _to_utc_aware(t[1][0]["timestamp"]) if t[1][0].get("timestamp") else datetime.min.replace(tzinfo=timezone.utc)
+        _to_local_aware(t[1][0]["timestamp"]) if t[1][0].get("timestamp") else datetime.min.replace(tzinfo=timezone.utc)
     ))
 
     # ── format day header label ────────────────────────────────────────────
