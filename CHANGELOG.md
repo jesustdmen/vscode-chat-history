@@ -5,6 +5,27 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [Sem versão] — 2026-05-18 — UX/UI Fase 1
+
+### Adicionado
+- `_diagnóstico/AUDITORIA_UXUI.md`: diagnóstico visual completo com roadmap de 4 fases
+- Sidebar: 3 seções explícitas com captions (`CONFIGURAÇÃO` / `FILTROS` / `AÇÕES`) separadas por `st.divider()`
+- i18n: 3 novas chaves por idioma (`sidebar_config`, `sidebar_filters`, `sidebar_actions`) em pt-BR, en-US, es-ES
+
+### Alterado
+- `_CSS_DARK`: chips do multiselect de fonte passam de vermelho para índigo (`#312e81` + borda `#6366f1` + texto `#c7d2fe`)
+- `_CSS_DARK`: tab de navegação ativo exibe texto branco + `font-weight: 600` (maior contraste vs inativo)
+- `_CSS_COMMON`: `border-radius` dos balões de mensagem de 14px para 16px (visual mais moderno)
+- Multiselect de fonte: `format_func` exibe nomes curtos amigáveis (`agent`, `json`, `claude`, etc.) sem truncamento
+- Tab Tags: items de tag exibidos como cards com chip índigo + contagem de uso
+
+### Sem quebra de contrato
+- Todos os 6 módulos de navegação preservados
+- Todos os filtros, exportações, seletor de sessão e botões de ação preservados
+- Lógica de filtragem de sessões inalterada (apenas CSS e estrutura visual da sidebar foram alterados)
+
+---
+
 ## [0.1.1] — 2026-02-28
 
 ### Adicionado

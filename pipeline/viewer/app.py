@@ -456,12 +456,12 @@ _CSS_COMMON = """
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 
 .msg-user,.msg-assistant{
-    border-radius:14px;padding:10px 14px;
+    border-radius:16px;padding:10px 14px;
     word-break:break-word;overflow-x:auto;
     animation:fadeIn .15s ease-in;
 }
-.msg-user{border-radius:14px 14px 4px 14px;margin:6px 0 6px 60px}
-.msg-assistant{border-radius:14px 14px 14px 4px;margin:6px 60px 6px 0}
+.msg-user{border-radius:16px 16px 4px 16px;margin:6px 0 6px 60px}
+.msg-assistant{border-radius:16px 16px 16px 4px;margin:6px 60px 6px 0}
 
 .msg-user p,.msg-assistant p{margin:.35em 0}
 .msg-user p:first-child,.msg-assistant p:first-child{margin-top:0}
@@ -580,6 +580,16 @@ _CSS_DARK = """
 
 .empty-state{color:#666;border:1px dashed #3a3a5c}
 .sf-btn{background:#2d2d3e;color:#c4c4d4;border:1px solid #4a4a6a}
+
+/* Multiselect chips: índigo em vez do vermelho padrão */
+[data-baseweb="tag"]{background-color:#312e81 !important;border:1px solid #6366f1 !important}
+[data-baseweb="tag"] span{color:#c7d2fe !important}
+[data-baseweb="tag"] [role="button"]{color:#818cf8 !important}
+[data-baseweb="tag"] [role="button"]:hover{color:#c7d2fe !important;background:transparent !important}
+
+/* Nav radio: tab ativo com mais contraste */
+[data-testid="stRadio"] label p{color:#94a3b8}
+[data-testid="stRadio"] label:has(input:checked) p{color:#f1f5f9 !important;font-weight:600 !important}
 </style>
 """
 
@@ -1510,10 +1520,13 @@ def tab_tags(tag_store: dict[str, object], workspaces: list[dict]) -> None:
 
     for tag in all_tags:
         info_col, del_col = st.columns([8, 1])
+        n_use = usage_by_tag[tag]
         info_col.markdown(
-            f'<div class="ws-sess-item">'
-            f'<b>{_html.escape(tag)}</b>'
-            f'<br><span class="ws-sess-meta">{_t("tags_usage", n=usage_by_tag[tag])}</span>'
+            f'<div class="ws-card" style="padding:10px 14px;margin-bottom:4px">'
+            f'<span style="background:#312e81;color:#c7d2fe;padding:2px 10px;'
+            f'border-radius:4px;font-size:.75rem;font-weight:600">{_html.escape(tag)}</span>'
+            f'<span class="ws-meta" style="margin-left:10px;font-size:.8rem">'
+            f'{_t("tags_usage", n=n_use)}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -1706,6 +1719,8 @@ def main() -> None:
     with st.sidebar:
         st.title(_t("app_title"))
         st.caption(_t("sessions_loaded", n=len(sessions)))
+        st.divider()
+        st.caption(_t("sidebar_config"))
 
         # Seletor de idioma
         lang_options = list(LANGUAGE_OPTIONS.keys())
@@ -1730,10 +1745,16 @@ def main() -> None:
             st.rerun()
 
         st.divider()
+        st.caption(_t("sidebar_filters"))
 
         search     = st.text_input(_t("search_placeholder"), "")
         sources    = sorted({s["source"] for s in sessions.values()})
-        source_sel = st.multiselect(_t("source_filter_label"), sources, default=sources)
+        source_sel = st.multiselect(
+            _t("source_filter_label"),
+            sources,
+            default=sources,
+            format_func=lambda s: _SOURCE_LABEL.get(s, s.replace("_", " ")),
+        )
         hide_empty = st.checkbox(_t("hide_empty"), value=True)
         all_tags = list(tag_store.get("tags", [])) if isinstance(tag_store.get("tags", []), list) else []
         if "tag_filter" not in st.session_state:
@@ -1742,8 +1763,6 @@ def main() -> None:
         selected_tags = st.multiselect(_t("tags_filter_label"), all_tags, key="tag_filter")
         if not all_tags:
             st.caption(_t("tags_filter_empty"))
-
-        st.divider()
 
         # Filtro usando _search_text pré-computado (performance O(n_sessions))
         filtered = [
@@ -1788,6 +1807,7 @@ def main() -> None:
             )
 
         st.divider()
+        st.caption(_t("sidebar_actions"))
 
         # Botão de recarregar dados (limpa cache sem rodar pipeline)
         if st.button(_t("reload_data_btn"), use_container_width=True):

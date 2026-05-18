@@ -128,9 +128,55 @@ workspace_tags (workspace_hash, tag_id)
 
 ---
 
+---
+
+## Track UX/UI — Viewer
+
+> Track independente das Ondas técnicas. Não altera pipeline nem modelos de dados.  
+> Referência: [`_diagnóstico/AUDITORIA_UXUI.md`](_diagnóstico/AUDITORIA_UXUI.md)
+
+### Fase 1 — Quick Wins ✅ concluída em 2026-05-18
+
+- [x] Chips do multiselect: vermelho → índigo (`_CSS_DARK`)
+- [x] Tab ativo: texto branco + `font-weight: 600` (`_CSS_DARK`)
+- [x] Balões de mensagem: `border-radius` 14px → 16px (`_CSS_COMMON`)
+- [x] Sidebar: 3 seções com captions (CONFIGURAÇÃO / FILTROS / AÇÕES)
+- [x] Multiselect de fonte: `format_func` com nomes curtos amigáveis
+- [x] Tags: card view com chip índigo + contagem de uso
+
+### Fase 2 — Design System
+
+**Objetivo:** Centralizar variáveis de cor, tipografia e espaçamento em `:root {}`.  
+**Estimativa:** 2-4h
+
+- [ ] Bloco `:root {}` com CSS variables (paleta, tipografia, espaçamentos)
+- [ ] Migrar `_CSS_DARK` e `_CSS_COMMON` para usar as variables
+- [ ] Padronizar card pattern (base / hover / selecionado)
+- [ ] Padronizar tipografia (escala de 6 tamanhos)
+- [ ] Padronizar botões (primary / secondary / danger / ghost)
+
+### Fase 3 — Melhorias por Tela
+
+**Objetivo:** Aplicar design system em cada tab.  
+**Estimativa:** 4-8h
+
+- [ ] Tags: layout de duas colunas (quando > 3 tags)
+- [ ] Exportar: layout em duas colunas + resumo de seleção
+- [ ] Workspaces: zebra stripe no modo lista
+- [ ] Timeline: botões de navegação e hora mais legíveis
+- [ ] Diário: header de data com borda esquerda índigo
+
+### Fase 4 — Mudanças Estruturais (validar antes)
+
+- [ ] Avaliar migração de radio tabs para `st.tabs` nativo (alto risco)
+- [ ] Tags com cor associável (requer migração de `tags.json`)
+- [ ] Responsividade em telas estreitas (≤ 1366px)
+
+---
+
 ## Estado atual
 
-| Onda | Status |
+| Onda / Track | Status |
 |---|---|
 | Onda 1 — Higiene | Pendente |
 | Onda 2 — Decomposição do viewer | Pendente |
@@ -138,5 +184,9 @@ workspace_tags (workspace_hash, tag_id)
 | Onda 4 — Performance | Pendente (gatilho não atingido) |
 | Onda 5 — SQLite | Pendente (gatilho não atingido) |
 | Onda 6 — Governança | Pendente |
+| **UX/UI Fase 1** | **✅ Concluída — 2026-05-18** |
+| UX/UI Fase 2 | Próxima |
+| UX/UI Fase 3 | Pendente |
+| UX/UI Fase 4 | Pendente (validar antes) |
 
 > Atualizar esta tabela conforme as ondas avançarem.

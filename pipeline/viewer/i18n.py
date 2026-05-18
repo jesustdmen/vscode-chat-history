@@ -32,6 +32,9 @@ TRANSLATIONS: dict[str, dict] = {
         "language_label":       "🌐 Idioma",
         "tags_filter_label":    "🏷️ Tags",
         "tags_filter_empty":    "Nenhuma tag cadastrada ainda.",
+        "sidebar_config":       "CONFIGURAÇÃO",
+        "sidebar_filters":      "FILTROS",
+        "sidebar_actions":      "AÇÕES",
 
         # Tabs
         "tab_conversation":     "💬 Conversa",
@@ -181,6 +184,9 @@ TRANSLATIONS: dict[str, dict] = {
         "language_label":       "🌐 Language",
         "tags_filter_label":    "🏷️ Tags",
         "tags_filter_empty":    "No tags created yet.",
+        "sidebar_config":       "SETTINGS",
+        "sidebar_filters":      "FILTERS",
+        "sidebar_actions":      "ACTIONS",
 
         # Tabs
         "tab_conversation":     "💬 Conversation",
@@ -330,6 +336,9 @@ TRANSLATIONS: dict[str, dict] = {
         "language_label":       "🌐 Idioma",
         "tags_filter_label":    "🏷️ Tags",
         "tags_filter_empty":    "Todavía no hay tags creadas.",
+        "sidebar_config":       "CONFIGURACIÓN",
+        "sidebar_filters":      "FILTROS",
+        "sidebar_actions":      "ACCIONES",
 
         # Tabs
         "tab_conversation":     "💬 Conversación",
