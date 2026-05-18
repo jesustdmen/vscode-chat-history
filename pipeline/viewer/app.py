@@ -435,8 +435,18 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
         if s.get("source") != "chat_session_index":
             continue
         tid = s.get("thread_id") or s.get("session_id") or ""
-        if tid and tid not in sessions:
+        idx_title = (s.get("title") or "").strip()
+        if not tid:
+            continue
+        if tid not in sessions:
             sessions[tid] = _make(s, "chat_session_index")
+        elif idx_title:
+            # chat_session_index espelha o título exibido no VS Code, incluindo renames do usuário.
+            # Tem prioridade sobre o fallback (primeira mensagem) do chat_session_jsonl.
+            entry = sessions[tid]
+            entry["title"] = idx_title
+            if idx_title.lower() not in entry.get("_search_text", ""):
+                entry["_search_text"] = idx_title.lower() + " " + entry.get("_search_text", "")
 
     for s in summaries:
         if s.get("source") != "agent_sessions":
