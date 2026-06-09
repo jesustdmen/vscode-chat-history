@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [Sem versão] — 2026-05-18 — UX/UI Fase 2
+
+### Alterado
+- `_CSS_DARK`: bloco `:root {}` com 13 variáveis CSS (`--bg-surface`, `--bg-card`, `--border`, `--border-hover`, `--text-hi/mid/lo/dim`, `--stat-*`)
+- `_CSS_LIGHT`: bloco `:root {}` correspondente com valores do tema claro
+- ~40 ocorrências de cores hardcoded substituídas por `var()` em `_CSS_DARK`, `_CSS_LIGHT` e `_CSS_COMMON`
+- Output visual idêntico ao anterior — refatoração pura sem alteração perceptível
+
+### Mantidos hardcoded (intencionalmente)
+- Overrides `!important` do chrome Streamlit em `_CSS_LIGHT`
+- Gradientes compostos dos balões de mensagem
+- Shades específicos fora do conjunto de variáveis (`#94a3b8`, `#818cf8` em contextos isolados)
+
+---
+
 ## [Sem versão] — 2026-05-18 — UX/UI Fase 1
 
 ### Adicionado
