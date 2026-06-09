@@ -306,6 +306,17 @@ def save_tag_store(store: dict[str, object]) -> None:
     _TAGS_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _turn_count(item: dict) -> int:
+    try:
+        return int(item.get("user_turns") or 0) + int(item.get("assistant_turns") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_real_conversation(item: dict) -> bool:
+    return _turn_count(item) > 0
+
+
 @st.cache_data(show_spinner=False)
 def build_workspace_index(summaries: list[dict], ws_paths: dict[str, str], workspace_tags: dict[str, list[str]] | None = None) -> list[dict]:
     def should_replace(existing: dict, candidate: dict) -> bool:
@@ -323,6 +334,8 @@ def build_workspace_index(summaries: list[dict], ws_paths: dict[str, str], works
 
     by_hash: dict[str, dict] = {}
     for s in summaries:
+        if not _is_real_conversation(s):
+            continue
         h   = s.get("workspace_hash") or ""
         tid = s.get("thread_id") or s.get("session_id") or ""
         src = s.get("source", "")
@@ -427,6 +440,8 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
         src = s.get("source", "")
         if src in ("chat_session_index", "agent_sessions", "chat_editing_state"):
             continue
+        if not _is_real_conversation(s):
+            continue
         tid = s.get("thread_id") or s.get("session_id") or ""
         if tid:
             sessions[tid] = _make(s, src)
@@ -438,22 +453,13 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
         idx_title = (s.get("title") or "").strip()
         if not tid:
             continue
-        if tid not in sessions:
-            sessions[tid] = _make(s, "chat_session_index")
-        elif idx_title:
+        if tid in sessions and idx_title:
             # chat_session_index espelha o título exibido no VS Code, incluindo renames do usuário.
             # Tem prioridade sobre o fallback (primeira mensagem) do chat_session_jsonl.
             entry = sessions[tid]
             entry["title"] = idx_title
             if idx_title.lower() not in entry.get("_search_text", ""):
                 entry["_search_text"] = idx_title.lower() + " " + entry.get("_search_text", "")
-
-    for s in summaries:
-        if s.get("source") != "agent_sessions":
-            continue
-        tid = s.get("thread_id") or s.get("session_id") or ""
-        if tid and tid not in sessions:
-            sessions[tid] = _make(s, "agent_sessions")
 
     return sessions
 
