@@ -69,7 +69,7 @@ _CLI_SOURCES = {"codex_session", "claude_code_session"}
 def _codex_workspace_fixup(
     messages: list[ChatMessage], summaries: list[SessionSummary]
 ) -> None:
-    """Preenche workspace_hash para sessões Codex e Claude Code cujo cwd ainda não foi resolvido.
+    """Preenche workspace_hash para sessões CLI cujo cwd ainda não foi resolvido.
 
     Necessário porque shards reutilizados do cache não chamam build_summaries
     novamente, portanto qualquer lógica nova no aggregator só afeta shards novos.

@@ -1041,29 +1041,77 @@ def parse_codex_session_jsonl(path: Path) -> list[ChatMessage]:
 
 
 # ---------------------------------------------------------------------------
-# Claude Code CLI
+# Parser: ~/.claude/projects/<project>/<uuid>.jsonl
 # ---------------------------------------------------------------------------
 
+_CLAUDE_IGNORED_EVENTS = {
+    "queue-operation",
+    "attachment",
+    "file-history-snapshot",
+    "last-prompt",
+    "mode",
+    "system",
+}
+
+
+def _first_str(*values) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _claude_content_text(content) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ""
+
+    parts: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                parts.append(text)
+            continue
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type in (None, "text", "input_text", "output_text"):
+            text = _first_str(item.get("text"), item.get("content"))
+            if text:
+                parts.append(text)
+    return "\n\n".join(parts)
+
+
+def _claude_title(event: dict) -> str | None:
+    return _first_str(
+        event.get("customTitle"),
+        event.get("custom_title"),
+        event.get("title"),
+        event.get("aiTitle"),
+        event.get("ai_title"),
+        event.get("text"),
+        (event.get("message") or {}).get("title")
+        if isinstance(event.get("message"), dict)
+        else None,
+        (event.get("message") or {}).get("content")
+        if isinstance(event.get("message"), dict)
+        else None,
+    )
+
+
 def parse_claude_code_session(path: Path) -> list[ChatMessage]:
-    """
-    Parseia um arquivo .jsonl do Claude Code (~/.claude/projects/<slug>/<uuid>.jsonl).
-
-    Formato de cada linha:
-      {"type": "user"|"assistant"|"ai-title"|..., "message": {...},
-       "sessionId": "...", "timestamp": "...", "cwd": "...", ...}
-
-    Extrai:
-      - type=user       → mensagem do usuário (apenas itens type=text)
-      - type=assistant  → resposta (texto + tool_use como role=tool separado)
-      - type=ai-title   → título gerado pela IA (role=system)
-    Ignora: queue-operation, attachment, file-history-snapshot, last-prompt,
-            system, isSidechain=true (sub-agentes)
-    """
+    """Parseia JSONL do Claude Code CLI em mensagens canônicas."""
     source = str(path)
-    session_id = path.stem
     project_slug = path.parent.name
+    session_uuid = path.stem
+    session_id = f"claude-code:/{session_uuid}"
+    thread_id = session_id
     messages: list[ChatMessage] = []
-    resolved_sid: str | None = None
     workspace_emitted = False
 
     try:
@@ -1080,150 +1128,127 @@ def parse_claude_code_session(path: Path) -> list[ChatMessage]:
             event = json.loads(raw)
         except json.JSONDecodeError:
             continue
-
-        event_type = event.get("type")
-        if not event_type:
+        if not isinstance(event, dict) or event.get("isSidechain") is True:
             continue
 
-        if event_type in (
-            "queue-operation", "attachment", "file-history-snapshot",
-            "last-prompt", "system",
-        ):
+        event_type = str(event.get("type") or "")
+        if event_type in _CLAUDE_IGNORED_EVENTS:
             continue
 
-        if resolved_sid is None:
-            candidate = str(event.get("sessionId") or "").strip()
-            if candidate:
-                resolved_sid = candidate
+        ts = _first_str(event.get("timestamp"), event.get("createdAt"), event.get("created_at"))
+        request_id = _first_str(event.get("requestId"), event.get("request_id"))
+        response_id = _first_str(event.get("responseId"), event.get("response_id"))
+        model_id = _first_str(event.get("model"), event.get("modelId"), event.get("model_id"))
 
-        sid = resolved_sid or session_id
-        ts = event.get("timestamp") or None
-        cwd = str(event.get("cwd") or "").strip()
-
-        # Emite marcador de workspace na primeira mensagem com cwd
+        cwd = _first_str(event.get("cwd"))
         if cwd and not workspace_emitted:
-            workspace_emitted = True
-            messages.append(ChatMessage(
-                source="claude_code_session",
-                session_id=sid,
-                thread_id=sid,
-                timestamp=ts,
-                role="system",
-                text=json.dumps(
-                    {"_type": "session_workspace", "cwd": cwd, "project": project_slug},
-                    ensure_ascii=False,
-                ),
-                workspace_hash=None,
-                raw_source_file=source,
-            ))
-
-        if event_type == "ai-title":
-            title = str(event.get("aiTitle") or "").strip()
-            if title:
-                messages.append(ChatMessage(
+            messages.append(
+                ChatMessage(
                     source="claude_code_session",
-                    session_id=sid,
-                    thread_id=sid,
+                    session_id=session_id,
+                    thread_id=thread_id,
                     timestamp=ts,
                     role="system",
                     text=json.dumps(
-                        {"_type": "thread_title", "title": title, "project": project_slug},
+                        {"_type": "session_workspace", "cwd": cwd, "project": project_slug},
                         ensure_ascii=False,
                     ),
-                    workspace_hash=None,
                     raw_source_file=source,
-                ))
+                )
+            )
+            workspace_emitted = True
+
+        if event_type in ("ai-title", "custom-title"):
+            title = _claude_title(event)
+            if title:
+                messages.append(
+                    ChatMessage(
+                        source="claude_code_session",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        timestamp=ts,
+                        role="system",
+                        text=json.dumps(
+                            {"_type": "thread_title", "title": title, "project": project_slug},
+                            ensure_ascii=False,
+                        ),
+                        request_id=request_id,
+                        response_id=response_id,
+                        model_id=model_id,
+                        raw_source_file=source,
+                    )
+                )
             continue
 
-        if event_type not in ("user", "assistant"):
+        message = event.get("message") or {}
+        if not isinstance(message, dict):
             continue
-
-        # Ignora mensagens de sub-agente
-        if event.get("isSidechain"):
-            continue
-
-        msg = event.get("message") or {}
-        role = str(msg.get("role") or event_type)
-        content: list = msg.get("content") if isinstance(msg.get("content"), list) else []
+        role = str(message.get("role") or event_type or "").strip()
+        content = message.get("content")
+        request_id = request_id or _first_str(message.get("requestId"), message.get("request_id"))
+        response_id = response_id or _first_str(message.get("id"), message.get("responseId"))
+        model_id = model_id or _first_str(message.get("model"), message.get("modelId"))
 
         if role == "user":
-            parts: list[str] = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    t = str(item.get("text") or "").strip()
-                    if t:
-                        parts.append(t)
-            text = "\n\n".join(parts)
-            if not text:
-                continue
-            messages.append(ChatMessage(
-                source="claude_code_session",
-                session_id=sid,
-                thread_id=sid,
-                timestamp=ts,
-                role="user",
-                text=text,
-                workspace_hash=None,
-                raw_source_file=source,
-            ))
+            text = _claude_content_text(content)
+            if text:
+                messages.append(
+                    ChatMessage(
+                        source="claude_code_session",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        timestamp=ts,
+                        role="user",
+                        text=text,
+                        request_id=request_id,
+                        response_id=response_id,
+                        model_id=model_id,
+                        raw_source_file=source,
+                    )
+                )
 
         elif role == "assistant":
-            model_id = str(msg.get("model") or "").strip() or None
-            request_id = str(event.get("requestId") or "").strip() or None
-            text_parts: list[str] = []
-            tool_calls: list[dict] = []
-            files_changed: list[str] = []
-
-            for item in content:
-                if not isinstance(item, dict):
-                    continue
-                item_type = item.get("type")
-                if item_type == "text":
-                    t = str(item.get("text") or "").strip()
-                    if t:
-                        text_parts.append(t)
-                elif item_type == "tool_use":
-                    name = str(item.get("name") or "").strip()
-                    inp = item.get("input") or {}
-                    if name:
-                        tool_calls.append({"name": name, "input": inp})
-                    if name in ("Read", "Edit", "Write", "NotebookEdit"):
-                        fp = str(inp.get("file_path") or "").strip()
-                        if fp:
-                            files_changed.append(fp)
-                # thinking blocks são ignorados
-
-            text = "\n\n".join(text_parts)
+            text = _claude_content_text(content)
             if text:
-                messages.append(ChatMessage(
-                    source="claude_code_session",
-                    session_id=sid,
-                    thread_id=sid,
-                    timestamp=ts,
-                    role="assistant",
-                    text=text,
-                    model_id=model_id,
-                    request_id=request_id,
-                    files_changed=files_changed,
-                    workspace_hash=None,
-                    raw_source_file=source,
-                ))
+                messages.append(
+                    ChatMessage(
+                        source="claude_code_session",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        timestamp=ts,
+                        role="assistant",
+                        text=text,
+                        request_id=request_id,
+                        response_id=response_id,
+                        model_id=model_id,
+                        raw_source_file=source,
+                    )
+                )
 
-            for tc in tool_calls:
-                messages.append(ChatMessage(
-                    source="claude_code_session",
-                    session_id=sid,
-                    thread_id=sid,
-                    timestamp=ts,
-                    role="tool",
-                    text="",
-                    tool=tc["name"],
-                    tool_input=json.dumps(tc["input"], ensure_ascii=False),
-                    model_id=model_id,
-                    request_id=request_id,
-                    workspace_hash=None,
-                    raw_source_file=source,
-                ))
+            if isinstance(content, list):
+                for item in content:
+                    if not isinstance(item, dict) or item.get("type") != "tool_use":
+                        continue
+                    tool_name = _first_str(item.get("name"), item.get("tool"), item.get("id"))
+                    tool_input = item.get("input")
+                    messages.append(
+                        ChatMessage(
+                            source="claude_code_session",
+                            session_id=session_id,
+                            thread_id=thread_id,
+                            timestamp=ts,
+                            role="tool",
+                            text="",
+                            tool=tool_name,
+                            tool_input=json.dumps(tool_input, ensure_ascii=False)
+                            if tool_input is not None
+                            else None,
+                            request_id=request_id,
+                            response_id=response_id,
+                            model_id=model_id,
+                            raw_source_file=source,
+                        )
+                    )
 
     return messages
 

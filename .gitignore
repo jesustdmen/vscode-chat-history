@@ -9,6 +9,10 @@ pipeline/output/
 # Dados exportados pelo viewer — histórico pessoal de chat
 _chatsession/
 
+# Configurações locais de agentes/assistentes — podem conter paths e preferências pessoais
+.claude/
+.codex/
+
 # Secrets do Streamlit (se criados futuramente)
 .streamlit/secrets.toml
 
@@ -47,3 +51,8 @@ normalize_log.txt
 # Pasta de trabalho local — contexto, rascunhos, notas, arquivos de IA
 # Não vai ao repositório público. Use esta pasta para qualquer arquivo pessoal.
 _dev/
+
+# Diagnósticos locais, snapshots textuais e imagens de suporte
+_diagnóstico/
+diagnostico_*.txt
+image/

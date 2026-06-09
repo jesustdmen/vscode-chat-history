@@ -52,7 +52,7 @@ AppData do VS Code  +  ~/.codex/sessions/  +  ~/.claude/projects/
 
 - ✅ Lê **7 fontes distintas**: `chat_session_json`, `chat_session_jsonl`, `agent_sessions`, `chat_session_index`, `openai_chatgpt`, `codex_session`, `claude_code_session`
 - ✅ Suporte a **sessões Codex CLI** — lê `~/.codex/sessions/` e `~/.codex/archived_sessions/` com títulos AI-generated do `session_index.jsonl`
-- ✅ Suporte a **sessões Claude Code CLI** — lê `~/.claude/projects/<slug>/<uuid>.jsonl`; vincula ao workspace via `cwd`; exibe com badge âmbar
+- ✅ Suporte a **sessões Claude Code CLI** — lê `~/.claude/projects/<slug>/<uuid>.jsonl`; vincula ao workspace via `cwd`; exibe como `claude_code_session`
 - ✅ Suporte a **sessões sem workspace** (`emptyWindowChatSessions`) — captura conversas abertas fora de qualquer pasta
 - ✅ Reconstrói sessões ativas (workspaces abertos) a partir de patches JSONL incrementais
 - ✅ Processamento **incremental**: ingest rastreia alterações por fingerprint; normalize reaprovita shards inalterados
@@ -220,4 +220,3 @@ Distribuído sob a [Licença MIT](LICENSE).
 Desenvolvido com [GitHub Copilot](https://github.com/features/copilot) (Claude Sonnet 4.6).
 
 Feedback, issues e ⭐ são bem-vindos!
-

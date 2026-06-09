@@ -382,12 +382,11 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
                         changed_count += 1
                     copied_count += 1
 
-            # Copia .jsonl apenas se NÃO existe .json correspondente
+            # Copia .jsonl mesmo quando existe .json correspondente.
+            # Sessões ativas podem manter patches mais recentes no .jsonl.
             for src_file in sorted(WORKSPACE_STORAGE_DIR.glob(f"*/{session_dir_name}/*.jsonl")):
                 ws_hash = src_file.parts[-3]
                 session_id = src_file.stem
-                if session_id in seen_ids:
-                    continue  # .json já capturado
                 size = src_file.stat().st_size
                 fingerprint = file_fingerprint(src_file)
                 change = _change_status(state, src_file, fingerprint)
@@ -606,8 +605,6 @@ def run_ingest(snapshot_dir: Path | None = None) -> Path:
 
         for src_file in sorted(EMPTY_WINDOW_CHAT_SESSIONS_DIR.glob("*.jsonl")):
             session_id = src_file.stem
-            if session_id in ew_seen_ids:
-                continue  # .json já capturado
             size = src_file.stat().st_size
             fingerprint = file_fingerprint(src_file)
             change = _change_status(state, src_file, fingerprint)
