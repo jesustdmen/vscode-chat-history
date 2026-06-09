@@ -117,6 +117,7 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
 
         # 1. Extrai título a partir de mensagens system com JSON estruturado
         if not title:
+            title_candidates: list[tuple[int, str]] = []
             for m in msgs:
                 if m.role != "system" or not m.text:
                     continue
@@ -126,11 +127,18 @@ def build_summaries(all_messages: list[ChatMessage]) -> list[SessionSummary]:
                     if t in ("thread_title", "session_index"):
                         candidate = (meta.get("title") or "").strip()
                         if candidate:
-                            title = candidate
-                            break
+                            if source == "claude_code_session" and t == "thread_title":
+                                title_source = meta.get("title_source")
+                                priority = 0 if title_source == "custom-title" else 1
+                                title_candidates.append((priority, candidate))
+                            else:
+                                title = candidate
+                                break
                 except (json.JSONDecodeError, AttributeError):
                     # Mensagem system em formato legado (texto livre) — ignora
                     pass
+            if not title and title_candidates:
+                title = sorted(title_candidates, key=lambda item: item[0])[0][1]
 
         # Fallback: primeira mensagem do usuário como título
         if not title:

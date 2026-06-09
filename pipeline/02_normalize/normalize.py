@@ -56,7 +56,7 @@ from aggregator import build_summaries, _build_ws_path_to_hash, _normalize_cwd
 
 
 # Bump when parser logic or ChatMessage/SessionSummary serialization changes.
-_SHARD_SCHEMA_VERSION = "3"
+_SHARD_SCHEMA_VERSION = "4"
 
 
 # ---------------------------------------------------------------------------

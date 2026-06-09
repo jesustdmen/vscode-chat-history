@@ -1169,7 +1169,12 @@ def parse_claude_code_session(path: Path) -> list[ChatMessage]:
                         timestamp=ts,
                         role="system",
                         text=json.dumps(
-                            {"_type": "thread_title", "title": title, "project": project_slug},
+                            {
+                                "_type": "thread_title",
+                                "title": title,
+                                "project": project_slug,
+                                "title_source": event_type,
+                            },
                             ensure_ascii=False,
                         ),
                         request_id=request_id,
