@@ -393,6 +393,7 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
 
     def _make(s: dict, src: str) -> dict:
         tid        = s.get("thread_id") or s.get("session_id") or ""
+        sid        = s.get("session_id") or tid
         title      = (s.get("title") or "").strip() or "__NO_TITLE__"
         _ts_min = datetime.min.replace(tzinfo=timezone.utc)
         def _sort_key(m: dict) -> datetime:
@@ -424,7 +425,7 @@ def build_session_index(messages: list[dict], summaries: list[dict], workspace_t
             " ".join(t.lower() for t in tags),
         ])
         return {
-            "thread_id": tid, "title": title, "source": src,
+            "session_id": sid, "thread_id": tid, "title": title, "source": src,
             "first_ts": first_ts, "last_ts": last_ts,
             "created_label": created_label, "date_label": date_label,
             "user_turns": s.get("user_turns", 0), "assistant_turns": s.get("assistant_turns", 0),
@@ -514,6 +515,7 @@ _CSS_COMMON = """
 .sess-header{border-radius:8px;padding:10px 14px;margin-bottom:10px}
 .sess-header-title{font-size:1.05rem;font-weight:600;margin-bottom:4px}
 .sess-header-meta{font-size:.76rem}
+.sess-header-id{font-family:monospace;font-size:.72rem;margin-top:6px;word-break:break-all}
 
 .ws-card{border-radius:8px;padding:12px 16px;margin-bottom:10px;transition:border-color .15s ease,box-shadow .15s ease}
 .ws-hash{font-family:monospace;font-size:.85rem}
@@ -528,7 +530,7 @@ _CSS_COMMON = """
 .ws-session-title{font-size:.84rem;font-weight:600;margin-bottom:2px;line-height:1.35}
 .ws-session-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .ws-session-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 8px;font-size:.70rem;font-weight:600}
-.ws-session-meta{font-size:.73rem;margin-top:8px}
+.ws-session-meta{font-size:.73rem;margin-top:8px;word-break:break-all}
 .ws-block-sep{height:1px;margin:18px 0 6px 0}
 
 .day-header{padding:6px 12px;border-radius:6px;font-weight:600;font-size:.95rem;margin-top:12px}
@@ -997,7 +999,9 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
     ws_folder = (ws_paths or {}).get(ws_hash, "") if ws_hash else ""
     src_badge = _source_badge(session["source"])
     ws_info   = f" · 📁 <code>{_html.escape(Path(ws_folder).name or ws_folder)}</code>" if ws_folder else ""
-    tid_short = session["thread_id"][:16]
+    sid_full  = session.get("session_id") or session["thread_id"]
+    tid_full  = session["thread_id"]
+    tid_short = tid_full[:16]
     tag_html  = _tag_badges(session.get("tags", []))
     created_display = _fmt_date_display(session.get("created_label") or "—")
     last_display = _fmt_date_display(session.get("date_label") or "—")
@@ -1013,6 +1017,8 @@ def tab_conversa(session: dict, ws_paths: dict[str, str] | None = None) -> None:
         f'{src_badge}{ws_info} · '
         f'<span style="font-family:monospace;font-size:.72rem;color:#666">{tid_short}…</span>'
         f'</div>'
+        f'<div class="sess-header-id">Sessão: {_html.escape(sid_full)}</div>'
+        f'<div class="sess-header-id">Thread: {_html.escape(tid_full)}</div>'
         f'{f"<div style=\"margin-top:6px\">{tag_html}</div>" if tag_html else ""}'
         f'</div>',
         unsafe_allow_html=True,
@@ -1463,7 +1469,6 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
                 dt  = _fmt_date_display(sess["last_ts"][:10]) if sess["last_ts"] else "—"
                 u_s = sess["user_turns"]
                 a_s = sess["assistant_turns"]
-                tid = sess["thread_id"][:12]
                 full_tid = sess["thread_id"]
                 session_tag_html = _tag_badges(sess.get("tags", []))
                 display_title = _display_title(sess["title"])
@@ -1483,7 +1488,7 @@ def tab_workspaces(workspaces: list[dict], tag_store: dict[str, object], selecte
                     f'</div>'
                     f'{session_tag_html if session_tag_html else ""}'
                     f'<div class="ws-session-meta">'
-                    f'{_t("ws_thread")}: <span style="font-family:monospace">{_html.escape(tid)}…</span>'
+                    f'{_t("ws_thread")}: <span style="font-family:monospace">{_html.escape(full_tid)}</span>'
                     f'</div></div>',
                     unsafe_allow_html=True,
                 )
